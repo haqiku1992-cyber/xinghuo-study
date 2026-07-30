@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MASTERY_STREAK, pickPracticeQuestions, recordAttempt, type ProgressMap } from "./study-progress";
+import { buildStudyPlan, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, STUDY_TARGET, type ProgressMap } from "./study-progress";
 
 type QuestionType = "single" | "judge" | "short" | "essay";
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
@@ -28,6 +28,7 @@ type Session = {
   answers: Record<string, Answer>;
   startedAt: number;
   wrongOnly?: boolean;
+  reviewIds?: string[];
 };
 type WrongRecord = { count: number; lastWrong: number; streak: number; keep?: boolean };
 type HistoryItem = { id: string; type: QuestionType; at: number; count: number; correct: number; ratings: Record<Rating, number> };
@@ -190,9 +191,12 @@ export default function Home() {
   const current = active ? questionMap[active.questionIds[active.index]] : undefined;
   const currentAnswer = current && active ? active.answers[current.id] ?? { value: "" } : { value: "" };
   const currentProgress = current ? store.progress[current.id] : undefined;
+  const currentNextReviewAt = currentProgress ? getNextReviewAt(currentProgress) : undefined;
   const todayCount = store.history.filter((h) => sameDay(h.at)).reduce((sum, h) => sum + h.count, 0);
   const totalCount = store.history.reduce((sum, h) => sum + h.count, 0);
   const wrongCount = Object.keys(store.wrong).length;
+  const studyPlan = buildStudyPlan(store.progress, daysLeft);
+  const todayRemaining = Math.max(0, studyPlan.dailyTarget - todayCount);
 
   function flash(message: string) {
     setNotice(message);
@@ -271,11 +275,13 @@ export default function Home() {
   function startPractice(type: QuestionType, wrongOnly = false) {
     const pool = questions.filter((q) => q.type === type && (!wrongOnly || store.wrong[q.id]));
     if (!pool.length) return flash(wrongOnly ? "这一题型暂时没有错题" : "演示题库正在载入");
-    const picked = pickPracticeQuestions(pool, store.progress, { includeMastered: wrongOnly });
+    const now = Date.now();
+    const picked = pickPracticeQuestions(pool, store.progress, { includeMastered: wrongOnly, now });
     if (!picked.length) return flash("这一题型的题目已经全部学会");
+    const reviewIds = wrongOnly ? [] : picked.filter((question) => isReviewDue(store.progress[question.id], now)).map((question) => question.id);
     setStore((s) => ({
       ...s,
-      session: { id: crypto.randomUUID(), type, questionIds: picked.map((q) => q.id), index: 0, answers: {}, startedAt: Date.now(), wrongOnly },
+      session: { id: crypto.randomUUID(), type, questionIds: picked.map((q) => q.id), index: 0, answers: {}, startedAt: now, wrongOnly, reviewIds },
     }));
     setScreen("quiz");
     if (picked.length < 15) flash(`当前题库仅有 ${picked.length} 题，本轮使用全部题目`);
@@ -397,7 +403,7 @@ export default function Home() {
         <div className="progress-track"><i style={{ width: `${((active.index + 1) / active.questionIds.length) * 100}%` }} /></div>
 
         <article className="question-card">
-          <div className="question-tags"><span>{typeMeta[current.type].short}</span>{current.tags.map((t) => <em key={t}>{t}</em>)}</div>
+          <div className="question-tags"><span>{typeMeta[current.type].short}</span>{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((t) => <em key={t}>{t}</em>)}</div>
           <h1>{current.question}</h1>
           {current.type === "single" && (
             <div className="options">
@@ -437,7 +443,7 @@ export default function Home() {
             {(!subjective || currentAnswer.rating) && (
               <div className={`mastery-progress ${currentProgress?.masteredAt ? "done" : ""}`}>
                 <b>{currentProgress?.masteredAt ? "已学会" : `掌握进度 ${currentProgress?.correctStreak ?? 0}/${MASTERY_STREAK}`}</b>
-                <span>{currentProgress?.masteredAt ? "后续常规练习不再出现" : `连续答对 ${MASTERY_STREAK} 次后进入已学会`}</span>
+                <span>{currentProgress?.masteredAt && currentNextReviewAt ? `下次复习 ${new Date(currentNextReviewAt).toLocaleDateString("zh-CN")}` : `连续答对 ${MASTERY_STREAK} 次后进入已学会`}</span>
               </div>
             )}
             <div className="reference">
@@ -497,6 +503,13 @@ export default function Home() {
               <p>距离考试还有 {daysLeft} 天</p>
               <div className="hero-line" />
               <div className="today-row"><span>今日学习</span><strong>{todayCount}<small> 题</small></strong><em>{todayCount ? "保持节奏，很棒" : "今天也开始一点点"}</em></div>
+            </section>
+            <SectionTitle title="今日计划" side={`目标 ${STUDY_TARGET} 题`} />
+            <section className="study-plan-card">
+              <div className="study-plan-main"><span><small>今日还需</small><strong>{todayRemaining}<em> 题</em></strong></span><span><small>每日新题</small><b>{studyPlan.dailyNewTarget} 题</b></span><span><small>到期复习</small><b>{studyPlan.dueReviewCount} 题</b></span></div>
+              <div className="study-plan-track"><i style={{ width: `${Math.min(100, studyPlan.masteredCount / STUDY_TARGET * 100)}%` }} /></div>
+              <div className="study-plan-meta"><span>已掌握 {studyPlan.masteredCount}/{STUDY_TARGET}</span><span>距考试 {daysLeft} 天</span></div>
+              <p>今日建议共 {studyPlan.dailyTarget} 题；当前题库 {questions.length}/{STUDY_TARGET}{questions.length < STUDY_TARGET ? `，还需补充 ${STUDY_TARGET - questions.length} 题` : ""}。</p>
             </section>
             <SectionTitle title="选择题型" side="每轮最多 15 题" />
             <div className="type-grid">
