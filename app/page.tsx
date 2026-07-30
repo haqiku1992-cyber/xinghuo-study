@@ -606,6 +606,11 @@ function StatsPage({ history, wrongCount }: { history: HistoryItem[]; questions:
     <SectionTitle title="分题型表现" />
     <div className="rate-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <div key={type}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{type === "single" || type === "judge" ? "正确率" : "掌握率"}</small></span><div><b>{rate(type)}%</b><em><i style={{ width: `${rate(type)}%` }} /></em></div></div>)}</div>
     <SectionTitle title="最近练习" />
-    {history.length ? <div className="history-list">{[...history].reverse().slice(0, 5).map((h) => <div key={h.id}><span><strong>{typeMeta[h.type].name}</strong><small>{new Date(h.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small></span><b>{h.count} 题</b></div>)}</div> : <div className="empty-mini">完成第一轮练习后，这里会生成你的学习轨迹。</div>}
+    {history.length ? <div className="history-list">{[...history].reverse().slice(0, 5).map((h) => {
+      const objective = h.type === "single" || h.type === "judge";
+      const score = objective ? h.correct : h.ratings.mastered;
+      const resultRate = h.count ? Math.round(score / h.count * 100) : 0;
+      return <div key={h.id}><span><strong>{typeMeta[h.type].name}</strong><small>{new Date(h.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small></span><div className="history-result"><b>{score}/{h.count}</b><small>{resultRate}% {objective ? "正确率" : "掌握率"}</small></div></div>;
+    })}</div> : <div className="empty-mini">完成第一轮练习后，这里会生成你的学习轨迹。</div>}
   </section>;
 }
