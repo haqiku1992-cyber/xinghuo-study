@@ -88,6 +88,23 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
 .today-row span,.today-row em{color:var(--muted);opacity:1}
 .today-row strong{color:var(--text);font-size:21px}
 .today-row em{margin-top:1px}
+.study-plan-card{
+  padding:17px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--surface);
+}
+.study-plan-main{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:10px;align-items:end}
+.study-plan-main>span{min-width:0}
+.study-plan-main small,.study-plan-main strong,.study-plan-main b{display:block}
+.study-plan-main small{color:var(--muted);font-size:10px}
+.study-plan-main strong{margin-top:2px;font:34px Georgia,serif}
+.study-plan-main strong em{font:12px system-ui,sans-serif;font-style:normal}
+.study-plan-main b{margin-top:6px;font-size:14px}
+.study-plan-track{height:5px;margin-top:16px;border-radius:999px;background:var(--line);overflow:hidden}
+.study-plan-track i{display:block;height:100%;border-radius:inherit;background:var(--accent)}
+.study-plan-meta{display:flex;justify-content:space-between;margin-top:8px;color:var(--muted);font-size:10px}
+.study-plan-card p{margin:13px 0 0;padding-top:11px;border-top:1px solid var(--line);color:var(--muted);font-size:11px;line-height:1.55}
 .section-title{margin-top:26px}
 .section-title h2{font-size:18px;font-weight:650}
 .type-grid{gap:10px}
