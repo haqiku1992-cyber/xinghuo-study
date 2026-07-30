@@ -193,6 +193,9 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
   border-radius:18px;
   box-shadow:none;
 }
+.history-result{text-align:right}
+.history-result b{display:block;font-size:16px}
+.history-result small{margin-top:4px}
 .stats-hero{border:1px solid var(--line);border-radius:20px;background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
 .stats-hero div{border-right-color:var(--line)}
 .quiz-shell{padding:16px 16px 104px}
