@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MASTERY_STREAK, pickPracticeQuestions, recordAttempt, type ProgressMap } from "./study-progress";
 
 type QuestionType = "single" | "judge" | "short" | "essay";
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
@@ -30,7 +31,7 @@ type Session = {
 };
 type WrongRecord = { count: number; lastWrong: number; streak: number; keep?: boolean };
 type HistoryItem = { id: string; type: QuestionType; at: number; count: number; correct: number; ratings: Record<Rating, number> };
-type Store = { session: Session | null; wrong: Record<string, WrongRecord>; history: HistoryItem[]; theme: "light" | "dark" };
+type Store = { session: Session | null; wrong: Record<string, WrongRecord>; progress: ProgressMap; history: HistoryItem[]; theme: "light" | "dark" };
 type SyncStatus = "disconnected" | "connecting" | "synced" | "pending" | "error";
 
 const STORAGE_KEY = "xinghuo-study-v1";
@@ -42,7 +43,7 @@ const typeMeta: Record<QuestionType, { name: string; short: string; icon: string
   short: { name: "简答题", short: "简答", icon: "简", tone: "blue" },
   essay: { name: "论述题", short: "论述", icon: "论", tone: "rose" },
 };
-const emptyStore: Store = { session: null, wrong: {}, history: [], theme: "light" };
+const emptyStore: Store = { session: null, wrong: {}, progress: {}, history: [], theme: "light" };
 
 function mergeStores(local: Store, cloudValue: unknown): Store {
   if (!cloudValue || typeof cloudValue !== "object") return local;
@@ -56,25 +57,23 @@ function mergeStores(local: Store, cloudValue: unknown): Store {
     const remote = wrong[id];
     if (!remote || record.lastWrong >= remote.lastWrong) wrong[id] = record;
   }
+  const progress: ProgressMap = { ...cloud.progress };
+  for (const [id, record] of Object.entries(local.progress)) {
+    const remote = progress[id];
+    if (!remote || record.lastAttempt >= remote.lastAttempt) progress[id] = record;
+  }
   const session = !cloud.session || (local.session && local.session.startedAt >= cloud.session.startedAt)
     ? local.session
     : cloud.session;
   return {
     session,
     wrong,
+    progress,
     history: [...history.values()].sort((a, b) => a.at - b.at),
     theme: local.theme,
   };
 }
 
-function shuffle<T>(items: T[]) {
-  const next = [...items];
-  for (let i = next.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
-  }
-  return next;
-}
 function sameDay(a: number, b = Date.now()) {
   return new Date(a).toDateString() === new Date(b).toDateString();
 }
@@ -190,6 +189,7 @@ export default function Home() {
   const active = store.session;
   const current = active ? questionMap[active.questionIds[active.index]] : undefined;
   const currentAnswer = current && active ? active.answers[current.id] ?? { value: "" } : { value: "" };
+  const currentProgress = current ? store.progress[current.id] : undefined;
   const todayCount = store.history.filter((h) => sameDay(h.at)).reduce((sum, h) => sum + h.count, 0);
   const totalCount = store.history.reduce((sum, h) => sum + h.count, 0);
   const wrongCount = Object.keys(store.wrong).length;
@@ -271,7 +271,8 @@ export default function Home() {
   function startPractice(type: QuestionType, wrongOnly = false) {
     const pool = questions.filter((q) => q.type === type && (!wrongOnly || store.wrong[q.id]));
     if (!pool.length) return flash(wrongOnly ? "这一题型暂时没有错题" : "演示题库正在载入");
-    const picked = shuffle(pool).slice(0, 15);
+    const picked = pickPracticeQuestions(pool, store.progress, { includeMastered: wrongOnly });
+    if (!picked.length) return flash("这一题型的题目已经全部学会");
     setStore((s) => ({
       ...s,
       session: { id: crypto.randomUUID(), type, questionIds: picked.map((q) => q.id), index: 0, answers: {}, startedAt: Date.now(), wrongOnly },
@@ -294,6 +295,7 @@ export default function Home() {
     const now = Date.now();
     setStore((s) => {
       const wrong = { ...s.wrong };
+      const progress = { ...s.progress, [current.id]: recordAttempt(s.progress[current.id], correct, now) };
       if (!correct) {
         const old = wrong[current.id] ?? { count: 0, lastWrong: now, streak: 0 };
         wrong[current.id] = { ...old, count: old.count + 1, lastWrong: now, streak: 0 };
@@ -303,7 +305,7 @@ export default function Home() {
         else wrong[current.id] = { ...wrong[current.id], streak: nextStreak };
       }
       return s.session ? {
-        ...s, wrong,
+        ...s, wrong, progress,
         session: { ...s.session, answers: { ...s.session.answers, [current.id]: { ...currentAnswer, submitted: true, correct } } },
       } : s;
     });
@@ -314,6 +316,7 @@ export default function Home() {
     const now = Date.now();
     setStore((s) => {
       const wrong = { ...s.wrong };
+      const progress = { ...s.progress, [current.id]: recordAttempt(s.progress[current.id], rating === "mastered", now) };
       if (rating !== "mastered") {
         const old = wrong[current.id] ?? { count: 0, lastWrong: now, streak: 0 };
         wrong[current.id] = { ...old, count: old.count + 1, lastWrong: now, streak: 0 };
@@ -323,7 +326,7 @@ export default function Home() {
         else wrong[current.id] = { ...wrong[current.id], streak: nextStreak };
       }
       return s.session ? {
-        ...s, wrong,
+        ...s, wrong, progress,
         session: { ...s.session, answers: { ...s.session.answers, [current.id]: { ...currentAnswer, submitted: true, rating } } },
       } : s;
     });
@@ -431,6 +434,12 @@ export default function Home() {
         {submitted && (
           <section className="answer-panel">
             {!subjective && <div className={`answer-result ${currentAnswer.correct ? "ok" : "bad"}`}><b>{currentAnswer.correct ? "回答正确" : "再想一想"}</b><span>正确答案：{current.answer === "T" ? "正确" : current.answer === "F" ? "错误" : current.answer}</span></div>}
+            {(!subjective || currentAnswer.rating) && (
+              <div className={`mastery-progress ${currentProgress?.masteredAt ? "done" : ""}`}>
+                <b>{currentProgress?.masteredAt ? "已学会" : `掌握进度 ${currentProgress?.correctStreak ?? 0}/${MASTERY_STREAK}`}</b>
+                <span>{currentProgress?.masteredAt ? "后续常规练习不再出现" : `连续答对 ${MASTERY_STREAK} 次后进入已学会`}</span>
+              </div>
+            )}
             <div className="reference">
               <span className="eyebrow">{subjective ? "参考答案" : "答案解析"}</span>
               <p>{subjective ? current.reference_answer : current.explanation}</p>
@@ -493,7 +502,7 @@ export default function Home() {
             <div className="type-grid">
               {(Object.keys(typeMeta) as QuestionType[]).map((type) => (
                 <button className={`type-card ${typeMeta[type].tone}`} key={type} onClick={() => startPractice(type)}>
-                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type).length} 道题</small></span><b>›</b>
+                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !store.progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && store.progress[q.id]?.masteredAt).length} 已学会</small></span><b>›</b>
                 </button>
               ))}
             </div>
@@ -502,7 +511,7 @@ export default function Home() {
             <div className="demo-note">内容版本 2026.07 · 部分题型仍为流程演示内容</div>
           </>
         )}
-        {tab === "practice" && <PracticePage questions={questions} startPractice={startPractice} active={active} resume={() => setScreen("quiz")} />}
+        {tab === "practice" && <PracticePage questions={questions} progress={store.progress} startPractice={startPractice} active={active} resume={() => setScreen("quiz")} />}
         {tab === "wrong" && <WrongPage questions={questions} wrong={store.wrong} startPractice={startPractice} clearType={(type) => setStore((s) => ({ ...s, wrong: Object.fromEntries(Object.entries(s.wrong).filter(([id]) => questionMap[id]?.type !== type)) }))} />}
         {tab === "stats" && <StatsPage history={store.history} questions={questions} wrongCount={wrongCount} />}
         {tab === "settings" && (
@@ -567,11 +576,11 @@ function SectionTitle({ title, side }: { title: string; side?: string }) {
 function PageHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return <header className="page-header"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1></header>;
 }
-function PracticePage({ questions, startPractice, active, resume }: { questions: Question[]; startPractice: (t: QuestionType) => void; active: Session | null; resume: () => void }) {
+function PracticePage({ questions, progress, startPractice, active, resume }: { questions: Question[]; progress: ProgressMap; startPractice: (t: QuestionType) => void; active: Session | null; resume: () => void }) {
   return <section className="subpage"><PageHeader eyebrow="按题型专项练习" title="开始刷题" />
     {active && <button className="continue-card" onClick={resume}><span><small>未完成的练习</small><strong>{typeMeta[active.type].name} · 第 {active.index + 1}/{active.questionIds.length} 题</strong></span><b>继续 ›</b></button>}
-    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type).length} 道题 · 随机抽取</small></span><b>开始 ›</b></button>)}</div>
-    <div className="tip-card"><b>练习说明</b><p>客观题即时判定；主观题查看参考内容后自评。退出或刷新不会丢失本轮进度。</p></div>
+    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
+    <div className="tip-card"><b>练习说明</b><p>每轮优先加入没做过的题；连续答对 5 次后标记为“已学会”，后续常规练习不再出现。答错会重新累计。</p></div>
   </section>;
 }
 function WrongPage({ questions, wrong, startPractice, clearType }: { questions: Question[]; wrong: Store["wrong"]; startPractice: (t: QuestionType, w?: boolean) => void; clearType: (t: QuestionType) => void }) {

@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "node scripts/sync-public-assets.mjs && vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/pwa-assets.test.mjs",
+    "test": "npm run build && node --experimental-strip-types --test tests/pwa-assets.test.mjs tests/study-progress.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
