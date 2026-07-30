@@ -251,6 +251,21 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
 }
 .answer-result.ok{background:var(--success-bg);color:var(--success-text)}
 .answer-result.bad{background:var(--danger-bg);color:var(--danger-text)}
+.mastery-progress{
+  margin-top:10px;
+  padding:13px 16px;
+  border:1px solid var(--line);
+  border-radius:15px;
+  background:var(--surface);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.mastery-progress b{font-size:13px;color:var(--text)}
+.mastery-progress span{font-size:11px;color:var(--muted);text-align:right}
+.mastery-progress.done{border-color:var(--success-border);background:var(--success-bg)}
+.mastery-progress.done b,.mastery-progress.done span{color:var(--success-text)}
 .options button:disabled,.judge-grid button:disabled{opacity:1}
 @media(min-width:561px){
   body{padding:24px 0}
