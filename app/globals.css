@@ -118,6 +118,17 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
 .type-card:active,.practice-list>button:active,.wrong-shortcut:active{transform:scale(.985)}
 .type-card i,.practice-list>button>i,.rate-list>div>i{border-radius:12px}
 .type-card strong{font-weight:650}
+:root[data-theme=dark] .type-card.amber,
+:root[data-theme=dark] .type-card.green,
+:root[data-theme=dark] .type-card.blue,
+:root[data-theme=dark] .type-card.rose{
+  background:var(--surface)!important;
+  color:var(--text)!important;
+}
+:root[data-theme=dark] .type-card.amber>i{background:#3b3120;color:#f4c978}
+:root[data-theme=dark] .type-card.green>i{background:#263629;color:#9dcca3}
+:root[data-theme=dark] .type-card.blue>i{background:#26343a;color:#9bc7d3}
+:root[data-theme=dark] .type-card.rose>i{background:#3a292b;color:#dda2a7}
 .continue-card{
   border-radius:18px;
   background:var(--surface);
