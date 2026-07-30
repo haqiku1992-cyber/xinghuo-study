@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "星火学习｜入党考试刷题",
-  description: "手机优先、本地保存、支持离线使用的入党考试复习工具。",
-  applicationName: "星火学习",
+  title: "学习记录",
+  description: "本地优先、支持离线和跨设备同步的学习工具。",
+  applicationName: "学习记录",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "星火学习",
+    title: "学习记录",
   },
   icons: {
     icon: [

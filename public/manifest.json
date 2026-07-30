@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "星火学习｜入党考试刷题",
-  "short_name": "星火学习",
-  "description": "本地保存、支持离线使用的入党考试复习工具。",
+  "name": "学习记录",
+  "short_name": "学习记录",
+  "description": "本地优先、支持离线和跨设备同步的学习工具。",
   "lang": "zh-CN",
   "start_url": "/",
   "scope": "/",
