@@ -481,7 +481,7 @@ export default function Home() {
       <div className="page-content">
         {tab === "home" && (
           <>
-            <header className="home-header"><div><span className="brand-dot" />星火 · 入党学习</div><button className="icon-button theme-button" onClick={() => setStore((s) => ({ ...s, theme: s.theme === "light" ? "dark" : "light" }))}>{store.theme === "light" ? "☾" : "☀"}</button></header>
+            <header className="home-header"><button className="icon-button theme-button" onClick={() => setStore((s) => ({ ...s, theme: s.theme === "light" ? "dark" : "light" }))}>{store.theme === "light" ? "☾" : "☀"}</button></header>
             <section className="hero-card">
               <span className="eyebrow">考试倒计时 · 2027年6月1日</span>
               <div className="countdown"><strong>{daysLeft}</strong><span>天</span></div>
@@ -499,7 +499,7 @@ export default function Home() {
             </div>
             {active && <button className="continue-card" onClick={() => setScreen("quiz")}><span><small>继续上次练习</small><strong>{typeMeta[active.type].name} · 第 {active.index + 1} 题</strong></span><b>继续 ›</b></button>}
             <button className="wrong-shortcut" onClick={() => setTab("wrong")}><i>↻</i><span><strong>错题复习</strong><small>{wrongCount ? `${wrongCount} 道题等待巩固` : "暂无错题，继续保持"}</small></span><b>›</b></button>
-            <div className="demo-note">单选题已依据2022年10月22日通过的现行《中国共产党章程》整理为 100 道不重复题目；其余题型仍为流程演示内容。</div>
+            <div className="demo-note">内容版本 2026.07 · 部分题型仍为流程演示内容</div>
           </>
         )}
         {tab === "practice" && <PracticePage questions={questions} startPractice={startPractice} active={active} resume={() => setScreen("quiz")} />}
@@ -547,8 +547,8 @@ export default function Home() {
               <p><strong>Android：</strong>用 Chrome 打开本站，点菜单→“安装应用”或“添加到主屏幕”。</p>
               <small>首次打开需要联网；加载完成后可离线进入已缓存页面和题库。</small>
             </div>
-            <div className="privacy-card"><b>本地优先</b><p>学习记录只保存在当前设备的浏览器中，不需要账号，也不会上传到服务器。</p></div>
-            <div className="version">星火学习 · PWA 版 0.2</div>
+            <div className="privacy-card"><b>本地优先</b><p>学习记录默认保存在当前设备；连接私人同步后，会加密传输至你自己的持久卷。</p></div>
+            <div className="version">学习记录 · PWA 版 0.3</div>
           </section>
         )}
       </div>

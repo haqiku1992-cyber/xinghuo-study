@@ -6,16 +6,16 @@
 
 /* Chiaros-inspired visual language: neutral canvas, quiet cards, compact mobile rhythm. */
 :root{
-  --bg:#f8f8f6;
+  --bg:#f7f8f7;
   --surface:#ffffff;
-  --card:#f3f3f1;
-  --text:#121212;
-  --muted:#73726d;
-  --line:rgba(31,31,30,.11);
+  --card:#f3f5f5;
+  --text:#253447;
+  --muted:#6f7d89;
+  --line:rgba(120,142,165,.22);
   --accent:#d97757;
   --accent-dark:#b95b3f;
-  --soft:#f3e5df;
-  --shadow:0 4px 20px rgba(31,31,30,.035),0 0 0 .5px rgba(31,31,30,.06);
+  --soft:#f5e9e4;
+  --shadow:0 10px 28px rgba(74,93,108,.055);
 }
 :root[data-theme=dark]{
   --bg:#181818;
@@ -35,9 +35,11 @@ body{
   font-size:16px;
   line-height:1.5;
 }
+button:focus:not(:focus-visible){outline:none}
+button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:2px}
 .app-shell{background:var(--bg)}
 .page-content{padding:18px 16px 108px}
-.home-header{height:52px;font-size:16px}
+.home-header{height:48px;justify-content:flex-end;font-size:16px}
 .brand-dot{width:8px;height:8px;margin-right:10px;box-shadow:none}
 .icon-button{
   width:44px;height:44px;
@@ -46,27 +48,32 @@ body{
   box-shadow:0 4px 16px rgba(31,31,30,.055);
 }
 .hero-card{
-  margin-top:14px;
-  padding:22px;
+  margin-top:8px;
+  padding:17px 18px;
   border:1px solid var(--line);
-  border-radius:22px;
+  border-radius:20px;
   color:var(--text);
   background:var(--surface);
   box-shadow:var(--shadow);
 }
 .hero-card:after{
-  width:132px;height:132px;right:-62px;top:-70px;
+  width:104px;height:104px;right:-52px;top:-57px;
   border-color:color-mix(in srgb,var(--accent) 24%,transparent);
-  box-shadow:0 0 0 22px color-mix(in srgb,var(--accent) 5%,transparent);
+  box-shadow:0 0 0 16px color-mix(in srgb,var(--accent) 4%,transparent);
 }
+.hero-card .eyebrow{font-size:11px}
 .hero-card .eyebrow{color:var(--muted);opacity:1}
 .countdown{color:var(--text)}
-.countdown strong{font-family:Georgia,"Times New Roman",serif;font-size:68px;letter-spacing:-3px}
+.countdown{margin-top:5px}
+.countdown strong{font-family:Georgia,"Times New Roman",serif;font-size:52px;letter-spacing:-2px}
+.countdown span{font-size:15px;margin:0 0 7px 7px}
 .countdown span{color:var(--accent)}
-.hero-card>p{color:var(--muted);opacity:1}
+.hero-card>p{margin:2px 0 13px;color:var(--muted);opacity:1;font-size:12px}
 .hero-line{background:var(--line)}
+.today-row{padding-top:12px}
 .today-row span,.today-row em{color:var(--muted);opacity:1}
-.today-row strong{color:var(--text)}
+.today-row strong{color:var(--text);font-size:21px}
+.today-row em{margin-top:1px}
 .section-title{margin-top:26px}
 .section-title h2{font-size:18px;font-weight:650}
 .type-grid{gap:10px}
@@ -82,10 +89,13 @@ body{
 .type-card strong{font-weight:650}
 .continue-card{
   border-radius:18px;
-  background:var(--text);
-  color:var(--bg);
-  box-shadow:0 8px 24px rgba(31,31,30,.11);
+  background:var(--surface);
+  color:var(--text);
+  border:1px solid var(--line);
+  box-shadow:none;
 }
+.continue-card small{color:var(--muted);opacity:1}
+.continue-card>b{color:var(--accent)}
 .wrong-shortcut{border-radius:18px;box-shadow:none}
 .demo-note,.tip-card,.privacy-card,.install-card{
   border:1px solid color-mix(in srgb,var(--accent) 15%,var(--line));
@@ -128,16 +138,17 @@ body{
 }
 .sync-connect input:focus{border-color:var(--accent)}
 .sync-connect button,.sync-actions button{
-  border:0;
+  border:1px solid var(--line);
   border-radius:12px;
   padding:0 17px;
-  background:var(--text);
-  color:var(--bg);
+  background:var(--surface);
+  color:var(--text);
   font-size:12px;
   font-weight:650;
 }
 .sync-actions{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:16px}
 .sync-actions button{height:42px}
+.sync-actions button:first-child{background:var(--surface);color:var(--text)}
 .sync-actions button:last-child{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
 .sync-card>p{margin:13px 0 0;color:var(--muted);font-size:11px;line-height:1.55}
 .bottom-nav{
@@ -147,10 +158,11 @@ body{
   box-shadow:0 -8px 30px rgba(31,31,30,.035);
 }
 .bottom-nav button{gap:2px}
+.bottom-nav button:focus-visible{outline:none}
 .bottom-nav i{font-size:20px}
 .bottom-nav button.active{color:var(--text)}
 .bottom-nav button.active i{color:var(--accent)}
-.bottom-nav em{background:var(--text);color:var(--bg)}
+.bottom-nav em{background:var(--accent);color:#fff}
 .page-header{margin-top:16px}
 .page-header .eyebrow{color:var(--muted)}
 .page-header h1{font-size:32px;font-weight:650}
@@ -161,13 +173,14 @@ body{
 }
 .tip-card b,.privacy-card b{font-weight:650}
 .filter-tabs button{background:var(--surface)}
-.filter-tabs button.active{background:var(--text);color:var(--bg)}
+.filter-tabs button.active{background:var(--soft);color:var(--text);border-color:color-mix(in srgb,var(--accent) 36%,var(--line))}
 .wrong-list article,.rate-list,.setting-card,.history-list>div{
   background:var(--surface);
   border-radius:18px;
   box-shadow:none;
 }
-.stats-hero{border-radius:20px;background:var(--text);color:var(--bg)}
+.stats-hero{border:1px solid var(--line);border-radius:20px;background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.stats-hero div{border-right-color:var(--line)}
 .quiz-shell{padding:16px 16px 104px}
 .quiz-top .icon-button{background:var(--bg);border-color:var(--line)}
 .progress-track{height:3px}
@@ -190,8 +203,9 @@ body{
 }
 .primary-button{
   border-radius:14px;
-  background:var(--text);
-  color:var(--bg);
+  background:var(--surface);
+  color:var(--text);
+  border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));
   box-shadow:none;
 }
 .secondary-button{border-radius:14px}
@@ -202,11 +216,11 @@ body{
   box-shadow:0 -8px 30px rgba(31,31,30,.04);
 }
 .quiz-footer button{border-radius:14px}
-.quiz-footer .next-button{background:var(--text);color:var(--bg)}
+.quiz-footer .next-button{background:var(--surface);color:var(--text);border-color:color-mix(in srgb,var(--accent) 30%,var(--line))}
 .report-mark{
-  background:var(--text);
-  color:var(--bg);
-  box-shadow:0 0 0 12px color-mix(in srgb,var(--text) 8%,transparent);
+  background:var(--soft);
+  color:var(--accent-dark);
+  box-shadow:0 0 0 12px color-mix(in srgb,var(--accent) 6%,transparent);
 }
 .report-shell>.eyebrow{color:var(--muted)}
 .report-card{border-radius:20px;background:var(--surface)}

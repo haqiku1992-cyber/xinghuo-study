@@ -4,7 +4,7 @@ import test from "node:test";
 
 test("PWA manifest contains installable app metadata", async () => {
   const manifest = JSON.parse(await readFile(new URL("../public/manifest.json", import.meta.url), "utf8"));
-  assert.equal(manifest.name, "星火学习｜入党考试刷题");
+  assert.equal(manifest.name, "学习记录");
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.start_url, "/");
   assert.ok(manifest.icons.some((icon) => icon.sizes === "192x192"));
@@ -39,4 +39,13 @@ test("client syncs on focus and while the page remains open", async () => {
   assert.match(page, /setInterval\(\(\) => void refresh\(\), 30000\)/);
   assert.match(page, /addEventListener\("focus", refresh\)/);
   assert.match(page, /addEventListener\("visibilitychange", onVisible\)/);
+});
+
+test("public shell uses a discreet product label", async () => {
+  const [page, layout] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(page, /星火 · 入党学习/);
+  assert.match(layout, /title: "学习记录"/);
 });
