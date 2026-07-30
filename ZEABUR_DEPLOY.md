@@ -10,6 +10,24 @@
 
 无需设置数据库或环境变量。生产服务会自动读取 Zeabur 提供的 `PORT`。
 
+## 可选：手机与电脑同步
+
+单用户同步不需要数据库。在网站服务上挂载一个卷：
+
+```text
+Volume ID: study-data
+Mount Directory: /data
+```
+
+再添加私有环境变量：
+
+```text
+SYNC_PASSWORD=自行设置的高强度密码
+SYNC_DATA_PATH=/data/study-data.json
+```
+
+重新部署后，在网站“设置 → 设备同步”中输入同一密码。请勿把密码提交到 GitHub。
+
 ## 更新网站
 
 修改完成后推送到同一 GitHub 分支，Zeabur 会自动重新构建和发布。若手机仍显示旧版本，彻底关闭桌面上的星火学习后重新打开一次。

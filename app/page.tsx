@@ -31,8 +31,10 @@ type Session = {
 type WrongRecord = { count: number; lastWrong: number; streak: number; keep?: boolean };
 type HistoryItem = { id: string; type: QuestionType; at: number; count: number; correct: number; ratings: Record<Rating, number> };
 type Store = { session: Session | null; wrong: Record<string, WrongRecord>; history: HistoryItem[]; theme: "light" | "dark" };
+type SyncStatus = "disconnected" | "connecting" | "synced" | "pending" | "error";
 
 const STORAGE_KEY = "xinghuo-study-v1";
+const SYNC_KEY = "xinghuo-sync-secret-v1";
 const examDate = new Date("2027-06-01T00:00:00+08:00");
 const typeMeta: Record<QuestionType, { name: string; short: string; icon: string; tone: string }> = {
   single: { name: "单项选择题", short: "单选", icon: "A", tone: "amber" },
@@ -41,6 +43,29 @@ const typeMeta: Record<QuestionType, { name: string; short: string; icon: string
   essay: { name: "论述题", short: "论述", icon: "论", tone: "rose" },
 };
 const emptyStore: Store = { session: null, wrong: {}, history: [], theme: "light" };
+
+function mergeStores(local: Store, cloudValue: unknown): Store {
+  if (!cloudValue || typeof cloudValue !== "object") return local;
+  const cloud = { ...emptyStore, ...(cloudValue as Partial<Store>) };
+  const history = new Map<string, HistoryItem>();
+  for (const item of [...cloud.history, ...local.history]) {
+    if (item?.id) history.set(item.id, item);
+  }
+  const wrong: Record<string, WrongRecord> = { ...cloud.wrong };
+  for (const [id, record] of Object.entries(local.wrong)) {
+    const remote = wrong[id];
+    if (!remote || record.lastWrong >= remote.lastWrong) wrong[id] = record;
+  }
+  const session = !cloud.session || (local.session && local.session.startedAt >= cloud.session.startedAt)
+    ? local.session
+    : cloud.session;
+  return {
+    session,
+    wrong,
+    history: [...history.values()].sort((a, b) => a.at - b.at),
+    theme: local.theme,
+  };
+}
 
 function shuffle<T>(items: T[]) {
   const next = [...items];
@@ -62,7 +87,15 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HistoryItem | null>(null);
   const [notice, setNotice] = useState("");
+  const [syncSecret, setSyncSecret] = useState("");
+  const [syncInput, setSyncInput] = useState("");
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("disconnected");
+  const [lastSyncAt, setLastSyncAt] = useState(0);
+  const [syncReady, setSyncReady] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
+  const storeRef = useRef(store);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  storeRef.current = store;
 
   useEffect(() => {
     fetch("/questions.json").then((r) => {
@@ -72,9 +105,19 @@ export default function Home() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setStore({ ...emptyStore, ...JSON.parse(raw) });
+      const savedSecret = localStorage.getItem(SYNC_KEY);
+      if (savedSecret) {
+        setSyncSecret(savedSecret);
+        setSyncInput(savedSecret);
+      }
     } catch {}
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!ready || !syncSecret || syncReady) return;
+    void connectSync(syncSecret, false);
+  }, [ready, syncSecret, syncReady]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
@@ -88,6 +131,29 @@ export default function Home() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
     document.documentElement.dataset.theme = store.theme;
   }, [store, ready]);
+
+  useEffect(() => {
+    if (!ready || !syncReady || !syncSecret) return;
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    setSyncStatus("pending");
+    syncTimer.current = setTimeout(async () => {
+      try {
+        const response = await fetch("/api/sync", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "x-sync-password": syncSecret },
+          body: JSON.stringify({ data: storeRef.current }),
+        });
+        if (!response.ok) throw new Error("同步失败");
+        setSyncStatus("synced");
+        setLastSyncAt(Date.now());
+      } catch {
+        setSyncStatus("error");
+      }
+    }, 900);
+    return () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    };
+  }, [store, ready, syncReady, syncSecret]);
 
   useEffect(() => {
     if (!questions.length || !store.session) return;
@@ -109,6 +175,70 @@ export default function Home() {
   function flash(message: string) {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 2200);
+  }
+
+  async function connectSync(secretValue = syncInput, remember = true) {
+    const secret = secretValue.trim();
+    if (!secret) return flash("请输入同步密码");
+    setSyncStatus("connecting");
+    try {
+      const response = await fetch("/api/sync", {
+        headers: { "x-sync-password": secret },
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "连接失败");
+      const cloudStore = result.data?.data;
+      const merged = mergeStores(storeRef.current, cloudStore);
+      setStore(merged);
+      setSyncSecret(secret);
+      setSyncInput(secret);
+      setSyncReady(true);
+      setSyncStatus("synced");
+      setLastSyncAt(Date.now());
+      if (remember) localStorage.setItem(SYNC_KEY, secret);
+      if (!result.data) flash("同步已连接，正在创建首份云端记录");
+      else flash("云端学习记录已合并");
+    } catch (error) {
+      setSyncReady(false);
+      setSyncStatus("error");
+      if (!remember) {
+        localStorage.removeItem(SYNC_KEY);
+        setSyncSecret("");
+        setSyncInput("");
+      }
+      flash(error instanceof Error ? error.message : "同步连接失败");
+    }
+  }
+
+  async function syncNow() {
+    if (!syncSecret) return;
+    setSyncStatus("connecting");
+    try {
+      const response = await fetch("/api/sync", {
+        headers: { "x-sync-password": syncSecret },
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "同步失败");
+      setStore(mergeStores(storeRef.current, result.data?.data));
+      setSyncStatus("synced");
+      setLastSyncAt(Date.now());
+      flash("学习记录已同步");
+    } catch (error) {
+      setSyncStatus("error");
+      flash(error instanceof Error ? error.message : "同步失败");
+    }
+  }
+
+  function disconnectSync() {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    localStorage.removeItem(SYNC_KEY);
+    setSyncSecret("");
+    setSyncInput("");
+    setSyncReady(false);
+    setSyncStatus("disconnected");
+    flash("已断开云同步，本地记录仍然保留");
   }
 
   function startPractice(type: QuestionType, wrongOnly = false) {
@@ -352,6 +482,31 @@ export default function Home() {
           <section className="subpage">
             <PageHeader eyebrow="偏好与数据" title="设置" />
             <div className="setting-card"><span><strong>显示主题</strong><small>适应不同阅读环境</small></span><button className="toggle" onClick={() => setStore((s) => ({ ...s, theme: s.theme === "light" ? "dark" : "light" }))}>{store.theme === "dark" ? "夜间" : "日间"}</button></div>
+            <SectionTitle title="设备同步" side={syncReady ? "已连接" : "单用户"} />
+            <div className="sync-card">
+              <div className="sync-heading">
+                <span className={`sync-dot ${syncStatus}`} />
+                <span><strong>{syncReady ? "学习记录云同步" : "连接私人同步"}</strong><small>{{
+                  disconnected: "输入 Zeabur 中设置的同步密码",
+                  connecting: "正在连接云端记录…",
+                  synced: lastSyncAt ? `上次同步 ${new Date(lastSyncAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}` : "云端记录已连接",
+                  pending: "本地有新记录，正在自动保存…",
+                  error: "暂时无法同步，本地记录不受影响",
+                }[syncStatus]}</small></span>
+              </div>
+              {syncReady ? (
+                <div className="sync-actions">
+                  <button onClick={syncNow}>立即同步</button>
+                  <button onClick={disconnectSync}>断开</button>
+                </div>
+              ) : (
+                <div className="sync-connect">
+                  <input type="password" value={syncInput} onChange={(event) => setSyncInput(event.target.value)} placeholder="同步密码" autoComplete="current-password" onKeyDown={(event) => event.key === "Enter" && connectSync()} />
+                  <button onClick={() => connectSync()}>连接</button>
+                </div>
+              )}
+              <p>密码只保存在此设备；数据通过 HTTPS 写入你的 Zeabur 持久卷。</p>
+            </div>
             <SectionTitle title="学习数据" />
             <div className="setting-list">
               <button onClick={exportData}><span><strong>导出学习数据</strong><small>保存为 JSON 文件</small></span><b>导出</b></button>

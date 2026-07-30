@@ -1,4 +1,4 @@
-const CACHE_NAME = "xinghuo-study-pwa-v3";
+const CACHE_NAME = "xinghuo-study-pwa-v4";
 const PRECACHE = [
   "/",
   "/manifest.json",
@@ -31,6 +31,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(

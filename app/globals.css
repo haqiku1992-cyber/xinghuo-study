@@ -100,6 +100,46 @@ body{
 .install-card p{margin:7px 0;color:var(--text);font-size:14px;line-height:1.55}
 .install-card p strong{font-weight:650}
 .install-card small{display:block;margin-top:12px;color:var(--muted);font-size:12px;line-height:1.55}
+.sync-card{
+  padding:18px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--surface);
+}
+.sync-heading{display:flex;align-items:center;gap:11px}
+.sync-heading>span:nth-child(2){flex:1}
+.sync-heading strong,.sync-heading small{display:block}
+.sync-heading strong{font-size:15px;font-weight:650}
+.sync-heading small{margin-top:4px;color:var(--muted);font-size:11px}
+.sync-dot{width:10px;height:10px;border-radius:50%;background:#a8a7a2;box-shadow:0 0 0 5px color-mix(in srgb,#a8a7a2 13%,transparent)}
+.sync-dot.synced{background:#5f9364;box-shadow:0 0 0 5px color-mix(in srgb,#5f9364 13%,transparent)}
+.sync-dot.pending,.sync-dot.connecting{background:var(--accent);box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 13%,transparent)}
+.sync-dot.error{background:#bc5b55;box-shadow:0 0 0 5px color-mix(in srgb,#bc5b55 13%,transparent)}
+.sync-connect{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:16px}
+.sync-connect input{
+  min-width:0;
+  height:44px;
+  padding:0 13px;
+  color:var(--text);
+  background:var(--bg);
+  border:1px solid var(--line);
+  border-radius:12px;
+  outline:none;
+}
+.sync-connect input:focus{border-color:var(--accent)}
+.sync-connect button,.sync-actions button{
+  border:0;
+  border-radius:12px;
+  padding:0 17px;
+  background:var(--text);
+  color:var(--bg);
+  font-size:12px;
+  font-weight:650;
+}
+.sync-actions{display:grid;grid-template-columns:1fr auto;gap:9px;margin-top:16px}
+.sync-actions button{height:42px}
+.sync-actions button:last-child{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.sync-card>p{margin:13px 0 0;color:var(--muted);font-size:11px;line-height:1.55}
 .bottom-nav{
   height:80px;
   background:color-mix(in srgb,var(--bg) 94%,transparent);

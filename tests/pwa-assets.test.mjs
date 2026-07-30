@@ -23,4 +23,13 @@ test("service worker precaches the essential offline files", async () => {
   for (const asset of ["/", "/manifest.json", "/questions.json", "/icon-192.png"]) {
     assert.match(worker, new RegExp(asset.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.match(worker, /pathname\.startsWith\("\/api\/"\)/);
+});
+
+test("sync API uses the configured volume path and password", async () => {
+  const route = await readFile(new URL("../app/api/sync/route.ts", import.meta.url), "utf8");
+  assert.match(route, /SYNC_DATA_PATH/);
+  assert.match(route, /SYNC_PASSWORD/);
+  assert.match(route, /timingSafeEqual/);
+  assert.match(route, /rename\(temporaryPath, dataPath\)/);
 });
