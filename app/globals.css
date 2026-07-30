@@ -205,6 +205,12 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
 .bottom-nav button.active{color:var(--text)}
 .bottom-nav button.active i{color:var(--accent)}
 .bottom-nav em{background:var(--accent);color:#fff}
+.wrong-page-content{
+  height:calc(100dvh - 80px);
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding-bottom:18px;
+}
 .page-header{margin-top:16px}
 .page-header .eyebrow{color:var(--muted)}
 .page-header h1{font-size:32px;font-weight:650}
@@ -302,4 +308,5 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
   body{padding:24px 0}
   .app-shell{min-height:calc(100dvh - 48px);border-radius:24px}
   .bottom-nav,.quiz-footer{bottom:24px;border-radius:0 0 24px 24px}
+  .wrong-page-content{height:calc(100dvh - 128px)}
 }

@@ -493,7 +493,7 @@ export default function Home() {
   return (
     <main className="app-shell">
       {notice && <div className="toast">{notice}</div>}
-      <div className="page-content">
+      <div className={`page-content${tab === "wrong" ? " wrong-page-content" : ""}`}>
         {tab === "home" && (
           <>
             <header className="home-header"><button className="icon-button theme-button" onClick={() => setStore((s) => ({ ...s, theme: s.theme === "light" ? "dark" : "light" }))}>{store.theme === "light" ? "☾" : "☀"}</button></header>
