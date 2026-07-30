@@ -33,3 +33,10 @@ test("sync API uses the configured volume path and password", async () => {
   assert.match(route, /timingSafeEqual/);
   assert.match(route, /rename\(temporaryPath, dataPath\)/);
 });
+
+test("client syncs on focus and while the page remains open", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /setInterval\(\(\) => void refresh\(\), 30000\)/);
+  assert.match(page, /addEventListener\("focus", refresh\)/);
+  assert.match(page, /addEventListener\("visibilitychange", onVisible\)/);
+});

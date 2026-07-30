@@ -156,6 +156,28 @@ export default function Home() {
   }, [store, ready, syncReady, syncSecret]);
 
   useEffect(() => {
+    if (!ready || !syncReady || !syncSecret) return;
+    let pulling = false;
+    const refresh = async () => {
+      if (pulling || document.visibilityState !== "visible") return;
+      pulling = true;
+      await pullCloud(true);
+      pulling = false;
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const interval = window.setInterval(() => void refresh(), 30000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [ready, syncReady, syncSecret]);
+
+  useEffect(() => {
     if (!questions.length || !store.session) return;
     const available = new Set(questions.map((q) => q.id));
     if (store.session.questionIds.some((id) => !available.has(id))) {
@@ -211,9 +233,9 @@ export default function Home() {
     }
   }
 
-  async function syncNow() {
+  async function pullCloud(quiet = false) {
     if (!syncSecret) return;
-    setSyncStatus("connecting");
+    if (!quiet) setSyncStatus("connecting");
     try {
       const response = await fetch("/api/sync", {
         headers: { "x-sync-password": syncSecret },
@@ -221,14 +243,19 @@ export default function Home() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "同步失败");
-      setStore(mergeStores(storeRef.current, result.data?.data));
+      const merged = mergeStores(storeRef.current, result.data?.data);
+      if (JSON.stringify(merged) !== JSON.stringify(storeRef.current)) setStore(merged);
       setSyncStatus("synced");
       setLastSyncAt(Date.now());
-      flash("学习记录已同步");
+      if (!quiet) flash("学习记录已同步");
     } catch (error) {
       setSyncStatus("error");
-      flash(error instanceof Error ? error.message : "同步失败");
+      if (!quiet) flash(error instanceof Error ? error.message : "同步失败");
     }
+  }
+
+  async function syncNow() {
+    await pullCloud(false);
   }
 
   function disconnectSync() {
