@@ -13,9 +13,23 @@ test("PWA manifest contains installable app metadata", async () => {
 
 test("question bank remains separate and has unique IDs", async () => {
   const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
-  assert.ok(questions.length >= 100);
+  assert.ok(questions.length >= 209);
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => question.source && question.updated_at));
+});
+
+test("party-history bank contains 100 traceable four-option questions", async () => {
+  const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
+  const partyHistory = questions.filter((question) => question.id.startsWith("party-history-single-"));
+  assert.equal(partyHistory.length, 100);
+  assert.equal(new Set(partyHistory.map((question) => question.question)).size, 100);
+  for (const question of partyHistory) {
+    assert.equal(question.type, "single");
+    assert.equal(question.options.length, 4);
+    assert.equal(new Set(question.options).size, 4);
+    assert.match(question.answer, /^[A-D]$/);
+    assert.match(question.source, /dswxyjy\.org\.cn/);
+  }
 });
 
 test("service worker precaches the essential offline files", async () => {
