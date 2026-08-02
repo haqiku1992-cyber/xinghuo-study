@@ -96,3 +96,12 @@ export function buildStudyPlan(progress: ProgressMap, daysLeft: number, now = Da
     remainingMasteryAttempts,
   };
 }
+
+export function formatDuration(durationMs: number) {
+  const totalSeconds = Math.max(1, Math.round(Math.max(0, durationMs) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (!minutes) return `${totalSeconds} 秒`;
+  if (!seconds) return `${minutes} 分钟`;
+  return `${minutes} 分 ${seconds} 秒`;
+}
