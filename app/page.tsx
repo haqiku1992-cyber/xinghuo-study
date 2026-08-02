@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildOptionOrder, buildStudyPlan, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, remapAnswerLetter, STUDY_TARGET, type ProgressMap } from "./study-progress";
+import { buildOptionOrder, buildStudyPlan, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, remapAnswerLetter, STUDY_TARGET, type ProgressMap } from "./study-progress";
 
 type QuestionType = "single" | "judge" | "short" | "essay";
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
@@ -32,7 +32,7 @@ type Session = {
   reviewIds?: string[];
 };
 type WrongRecord = { count: number; lastWrong: number; streak: number; keep?: boolean };
-type HistoryItem = { id: string; type: QuestionType; at: number; count: number; correct: number; ratings: Record<Rating, number> };
+type HistoryItem = { id: string; type: QuestionType; at: number; durationMs: number; count: number; correct: number; ratings: Record<Rating, number> };
 type Store = { session: Session | null; wrong: Record<string, WrongRecord>; progress: ProgressMap; history: HistoryItem[]; theme: "light" | "dark" };
 type SyncStatus = "disconnected" | "connecting" | "synced" | "pending" | "error";
 
@@ -351,8 +351,9 @@ export default function Home() {
     if (!active) return;
     const isObjective = active.type === "single" || active.type === "judge";
     const answers = Object.values(active.answers).filter((a) => a.submitted);
+    const finishedAt = Date.now();
     const item: HistoryItem = {
-      id: active.id, type: active.type, at: Date.now(), count: answers.length,
+      id: active.id, type: active.type, at: finishedAt, durationMs: Math.max(0, finishedAt - active.startedAt), count: answers.length,
       correct: isObjective ? answers.filter((a) => a.correct).length : 0,
       ratings: {
         mastered: answers.filter((a) => a.rating === "mastered").length,
@@ -479,7 +480,6 @@ export default function Home() {
 
   if (screen === "report" && report) {
     const objective = report.type === "single" || report.type === "judge";
-    const elapsed = active ? Math.round((Date.now() - active.startedAt) / 60000) : 0;
     return (
       <main className="app-shell report-shell">
         <div className="report-mark">✓</div>
@@ -491,7 +491,7 @@ export default function Home() {
           {objective ? <><div><strong>{report.correct}</strong><span>正确</span></div><div><strong>{report.count - report.correct}</strong><span>错误</span></div><div><strong>{report.count ? Math.round(report.correct / report.count * 100) : 0}%</strong><span>正确率</span></div></> :
             <><div><strong>{report.ratings.mastered}</strong><span>掌握</span></div><div><strong>{report.ratings.fuzzy}</strong><span>模糊</span></div><div><strong>{report.ratings.unknown}</strong><span>不会</span></div></>}
         </div>
-        <div className="report-note">用时约 {Math.max(1, elapsed)} 分钟 · 错题会进入复习区</div>
+        <div className="report-note">用时 {formatDuration(report.durationMs)} · 错题会进入复习区</div>
         <button className="primary-button" onClick={() => startPractice(report.type)}>再练一轮</button>
         <button className="secondary-button" onClick={() => goMain("home")}>返回首页</button>
       </main>

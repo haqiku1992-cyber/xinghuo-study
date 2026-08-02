@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildOptionOrder,
   buildStudyPlan,
+  formatDuration,
   MASTERY_STREAK,
   pickPracticeQuestions,
   recordAttempt,
@@ -98,4 +99,10 @@ test("study plan spreads five mastery attempts per target question across remain
   assert.equal(plan.dailyMasteryTarget, 17);
   assert.equal(plan.dailyTarget, 17);
   assert.equal(plan.remainingMasteryAttempts, 5000);
+});
+
+test("practice duration is formatted with minutes and seconds", () => {
+  assert.equal(formatDuration(42_000), "42 秒");
+  assert.equal(formatDuration(60_000), "1 分钟");
+  assert.equal(formatDuration(754_000), "12 分 34 秒");
 });
