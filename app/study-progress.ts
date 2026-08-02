@@ -61,6 +61,16 @@ function shuffle<T>(items: T[], random: () => number) {
   return next;
 }
 
+export function buildOptionOrder(optionCount: number, random = Math.random) {
+  return shuffle(Array.from({ length: optionCount }, (_, index) => index), random);
+}
+
+export function remapAnswerLetter(answer: string | undefined, optionOrder: number[]) {
+  if (!answer || !/^[A-Z]$/.test(answer)) return answer;
+  const displayedIndex = optionOrder.indexOf(answer.charCodeAt(0) - 65);
+  return displayedIndex < 0 ? answer : String.fromCharCode(65 + displayedIndex);
+}
+
 export function pickPracticeQuestions<T extends { id: string }>(
   questions: T[],
   progress: ProgressMap,

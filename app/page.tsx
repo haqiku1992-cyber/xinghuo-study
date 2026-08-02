@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildStudyPlan, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, STUDY_TARGET, type ProgressMap } from "./study-progress";
+import { buildOptionOrder, buildStudyPlan, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, remapAnswerLetter, STUDY_TARGET, type ProgressMap } from "./study-progress";
 
 type QuestionType = "single" | "judge" | "short" | "essay";
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
@@ -26,6 +26,7 @@ type Session = {
   questionIds: string[];
   index: number;
   answers: Record<string, Answer>;
+  optionOrders?: Record<string, number[]>;
   startedAt: number;
   wrongOnly?: boolean;
   reviewIds?: string[];
@@ -279,9 +280,12 @@ export default function Home() {
     const picked = pickPracticeQuestions(pool, store.progress, { includeMastered: wrongOnly, now });
     if (!picked.length) return flash("这一题型的题目已经全部学会");
     const reviewIds = wrongOnly ? [] : picked.filter((question) => isReviewDue(store.progress[question.id], now)).map((question) => question.id);
+    const optionOrders = Object.fromEntries(picked
+      .filter((question) => question.type === "single" && question.options)
+      .map((question) => [question.id, buildOptionOrder(question.options?.length ?? 0)]));
     setStore((s) => ({
       ...s,
-      session: { id: crypto.randomUUID(), type, questionIds: picked.map((q) => q.id), index: 0, answers: {}, startedAt: now, wrongOnly, reviewIds },
+      session: { id: crypto.randomUUID(), type, questionIds: picked.map((q) => q.id), index: 0, answers: {}, optionOrders, startedAt: now, wrongOnly, reviewIds },
     }));
     setScreen("quiz");
     if (picked.length < 15) flash(`当前题库仅有 ${picked.length} 题，本轮使用全部题目`);
@@ -297,7 +301,8 @@ export default function Home() {
 
   function submitObjective() {
     if (!current || !currentAnswer.value) return flash("请先选择答案");
-    const correct = currentAnswer.value === current.answer;
+    const optionOrder = current.options?.map((_, index) => active?.optionOrders?.[current.id]?.[index] ?? index) ?? [];
+    const correct = currentAnswer.value === remapAnswerLetter(current.answer, optionOrder);
     const now = Date.now();
     setStore((s) => {
       const wrong = { ...s.wrong };
@@ -388,6 +393,8 @@ export default function Home() {
   if (screen === "quiz" && active && current) {
     const submitted = currentAnswer.submitted;
     const subjective = current.type === "short" || current.type === "essay";
+    const optionOrder = current.options?.map((_, index) => active.optionOrders?.[current.id]?.[index] ?? index) ?? [];
+    const displayedAnswer = remapAnswerLetter(current.answer, optionOrder);
     return (
       <main className="app-shell quiz-shell">
         {notice && <div className="toast">{notice}</div>}
@@ -407,10 +414,11 @@ export default function Home() {
           <h1>{current.question}</h1>
           {current.type === "single" && (
             <div className="options">
-              {current.options?.map((option, i) => {
+              {optionOrder.map((originalIndex, i) => {
+                const option = current.options?.[originalIndex] ?? "";
                 const letter = String.fromCharCode(65 + i);
-                const cls = submitted ? (letter === current.answer ? "correct" : currentAnswer.value === letter ? "wrong-answer" : "") : currentAnswer.value === letter ? "selected" : "";
-                return <button key={option} className={cls} disabled={submitted} onClick={() => updateAnswer({ value: letter })}><b>{letter}</b><span>{option}</span></button>;
+                const cls = submitted ? (letter === displayedAnswer ? "correct" : currentAnswer.value === letter ? "wrong-answer" : "") : currentAnswer.value === letter ? "selected" : "";
+                return <button key={`${current.id}-${originalIndex}`} className={cls} disabled={submitted} onClick={() => updateAnswer({ value: letter })}><b>{letter}</b><span>{option}</span></button>;
               })}
             </div>
           )}
@@ -439,7 +447,7 @@ export default function Home() {
 
         {submitted && (
           <section className="answer-panel">
-            {!subjective && <div className={`answer-result ${currentAnswer.correct ? "ok" : "bad"}`}><b>{currentAnswer.correct ? "回答正确" : "再想一想"}</b><span>正确答案：{current.answer === "T" ? "正确" : current.answer === "F" ? "错误" : current.answer}</span></div>}
+            {!subjective && <div className={`answer-result ${currentAnswer.correct ? "ok" : "bad"}`}><b>{currentAnswer.correct ? "回答正确" : "再想一想"}</b><span>正确答案：{current.answer === "T" ? "正确" : current.answer === "F" ? "错误" : displayedAnswer}</span></div>}
             {(!subjective || currentAnswer.rating) && (
               <div className={`mastery-progress ${currentProgress?.masteredAt ? "done" : ""}`}>
                 <b>{currentProgress?.masteredAt ? "已学会" : `掌握进度 ${currentProgress?.correctStreak ?? 0}/${MASTERY_STREAK}`}</b>

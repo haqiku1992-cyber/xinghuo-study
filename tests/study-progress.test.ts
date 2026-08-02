@@ -2,16 +2,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildOptionOrder,
   buildStudyPlan,
   MASTERY_STREAK,
   pickPracticeQuestions,
   recordAttempt,
+  remapAnswerLetter,
   REVIEW_INTERVAL_DAYS,
   type ProgressMap,
   type QuestionProgress,
 } from "../app/study-progress.ts";
 
 const DAY_MS = 86_400_000;
+
+test("single-choice option order is shuffled and the answer letter follows its option", () => {
+  const randomValues = [0.1, 0.7, 0.2];
+  const order = buildOptionOrder(4, () => randomValues.shift() ?? 0);
+  assert.deepEqual([...order].sort(), [0, 1, 2, 3]);
+  assert.notDeepEqual(order, [0, 1, 2, 3]);
+  assert.equal(remapAnswerLetter("C", order), String.fromCharCode(65 + order.indexOf(2)));
+});
+
+test("non-choice answers and missing legacy option orders stay compatible", () => {
+  assert.equal(remapAnswerLetter("T", []), "T");
+  assert.equal(remapAnswerLetter("B", [0, 1, 2, 3]), "B");
+});
 
 test("a question is mastered after five consecutive correct answers", () => {
   let progress: QuestionProgress | undefined;
