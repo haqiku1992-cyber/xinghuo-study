@@ -18,19 +18,21 @@ import {
 
 const DAY_MS = 86_400_000;
 
-test("retired party-history state is removed without touching other store data", () => {
+test("retired question state is removed without touching other store data", () => {
   const state = {
-    progress: { "party-history-single-001": { attempts: 1 }, "party-constitution-single-001": { attempts: 2 } },
-    wrong: { "party-history-single-001": { count: 1 }, "party-constitution-single-001": { count: 2 } },
-    session: { questionIds: ["party-history-single-001"] },
+    progress: { "party-history-single-001": { attempts: 1 }, "demo-judge-001": { attempts: 1 }, "demo-short-001": { attempts: 1 }, "party-constitution-single-001": { attempts: 2 } },
+    wrong: { "party-history-single-001": { count: 1 }, "demo-judge-001": { count: 1 }, "demo-essay-001": { count: 1 }, "party-constitution-single-001": { count: 2 } },
+    session: { questionIds: ["demo-judge-001"] },
     history: [{ id: "old-session" }],
     theme: "dark",
   };
 
   assert.equal(isRetiredQuestionId("party-history-single-001"), true);
+  assert.equal(isRetiredQuestionId("demo-judge-001"), true);
+  assert.equal(isRetiredQuestionId("demo-short-001"), false);
   const sanitized = sanitizeRetiredQuestionState(state);
-  assert.deepEqual(sanitized.progress, { "party-constitution-single-001": { attempts: 2 } });
-  assert.deepEqual(sanitized.wrong, { "party-constitution-single-001": { count: 2 } });
+  assert.deepEqual(sanitized.progress, { "demo-short-001": { attempts: 1 }, "party-constitution-single-001": { attempts: 2 } });
+  assert.deepEqual(sanitized.wrong, { "demo-essay-001": { count: 1 }, "party-constitution-single-001": { count: 2 } });
   assert.equal(sanitized.session, null);
   assert.deepEqual(sanitized.history, state.history);
   assert.equal(sanitized.theme, "dark");

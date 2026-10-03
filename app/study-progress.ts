@@ -15,7 +15,7 @@ export type QuestionProgress = {
 export type ProgressMap = Record<string, QuestionProgress>;
 
 export function isRetiredQuestionId(id: string) {
-  return id.startsWith("party-history-single-");
+  return id.startsWith("party-history-single-") || id.startsWith("demo-judge-");
 }
 
 export function sanitizeRetiredQuestionState<T extends {
