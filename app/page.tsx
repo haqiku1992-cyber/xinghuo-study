@@ -1,15 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildOptionOrder, buildStudyPlan, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, remapAnswerLetter, STUDY_TARGET, type ProgressMap } from "./study-progress";
+import { buildOptionOrder, buildStudyPlan, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, remapAnswerLetter, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
 
 type QuestionType = "single" | "judge" | "short" | "essay";
+type QuestionTopic = "party-constitution" | "party-history" | "demo";
+type PracticeTopic = "all" | Exclude<QuestionTopic, "demo">;
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
 type Rating = "mastered" | "fuzzy" | "unknown";
+type PracticeOptions = { wrongOnly?: boolean; topic?: PracticeTopic };
 type Answer = { value: string; submitted?: boolean; correct?: boolean; rating?: Rating };
 type Question = {
   id: string;
   type: QuestionType;
+  topic: QuestionTopic;
   question: string;
   options?: string[];
   answer?: string;
@@ -29,6 +33,7 @@ type Session = {
   optionOrders?: Record<string, number[]>;
   startedAt: number;
   wrongOnly?: boolean;
+  topic?: PracticeTopic;
   reviewIds?: string[];
 };
 type WrongRecord = { count: number; lastWrong: number; streak: number; keep?: boolean };
@@ -45,7 +50,17 @@ const typeMeta: Record<QuestionType, { name: string; short: string; icon: string
   short: { name: "简答题", short: "简答", icon: "简", tone: "blue" },
   essay: { name: "论述题", short: "论述", icon: "论", tone: "rose" },
 };
+const topicMeta: Record<Exclude<PracticeTopic, "all">, { name: string; short: string }> = {
+  "party-constitution": { name: "党章", short: "党章" },
+  "party-history": { name: "党史", short: "党史" },
+};
 const emptyStore: Store = { session: null, wrong: {}, progress: {}, history: [], theme: "light" };
+
+function sessionSubtitle(session: Session) {
+  if (session.wrongOnly) return "错题复习";
+  if (session.topic && session.topic !== "all") return `${topicMeta[session.topic].name} · 日常练习`;
+  return "日常练习";
+}
 
 function mergeStores(local: Store, cloudValue: unknown): Store {
   if (!cloudValue || typeof cloudValue !== "object") return local;
@@ -67,13 +82,13 @@ function mergeStores(local: Store, cloudValue: unknown): Store {
   const session = !cloud.session || (local.session && local.session.startedAt >= cloud.session.startedAt)
     ? local.session
     : cloud.session;
-  return {
+  return sanitizeRetiredQuestionState({
     session,
     wrong,
     progress,
     history: [...history.values()].sort((a, b) => a.at - b.at),
     theme: local.theme,
-  };
+  });
 }
 
 function sameDay(a: number, b = Date.now()) {
@@ -84,7 +99,8 @@ export default function Home() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [store, setStore] = useState<Store>(emptyStore);
   const [tab, setTab] = useState<Tab>("home");
-  const [screen, setScreen] = useState<"main" | "quiz" | "report">("main");
+  const [screen, setScreen] = useState<"main" | "topic" | "quiz" | "report">("main");
+  const [topicPickerType, setTopicPickerType] = useState<"single" | "judge" | null>(null);
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HistoryItem | null>(null);
   const [notice, setNotice] = useState("");
@@ -105,7 +121,7 @@ export default function Home() {
     }).then(setQuestions).catch(() => setNotice("题库暂时无法载入，请联网后重试"));
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setStore({ ...emptyStore, ...JSON.parse(raw) });
+      if (raw) setStore(sanitizeRetiredQuestionState({ ...emptyStore, ...JSON.parse(raw) }));
       const savedSecret = localStorage.getItem(SYNC_KEY);
       if (savedSecret) {
         setSyncSecret(savedSecret);
@@ -178,14 +194,6 @@ export default function Home() {
     };
   }, [ready, syncReady, syncSecret]);
 
-  useEffect(() => {
-    if (!questions.length || !store.session) return;
-    const available = new Set(questions.map((q) => q.id));
-    if (store.session.questionIds.some((id) => !available.has(id))) {
-      setStore((s) => ({ ...s, session: null }));
-    }
-  }, [questions, store.session]);
-
   const daysLeft = Math.max(0, Math.ceil((examDate.getTime() - Date.now()) / 86400000));
   const questionMap = useMemo(() => Object.fromEntries(questions.map((q) => [q.id, q])), [questions]);
   const active = store.session;
@@ -194,10 +202,15 @@ export default function Home() {
   const currentProgress = current ? store.progress[current.id] : undefined;
   const currentNextReviewAt = currentProgress ? getNextReviewAt(currentProgress) : undefined;
   const todayCount = store.history.filter((h) => sameDay(h.at)).reduce((sum, h) => sum + h.count, 0);
-  const totalCount = store.history.reduce((sum, h) => sum + h.count, 0);
   const wrongCount = Object.keys(store.wrong).length;
   const studyPlan = buildStudyPlan(store.progress, daysLeft);
   const todayRemaining = Math.max(0, studyPlan.dailyTarget - todayCount);
+
+  function statsFor(type: QuestionType, topic: PracticeTopic = "all") {
+    const matching = questions.filter((question) => question.type === type && (topic === "all" || question.topic === topic));
+    const mastered = matching.filter((question) => store.progress[question.id]?.masteredAt).length;
+    return { total: matching.length, mastered, unmastered: matching.length - mastered };
+  }
 
   function flash(message: string) {
     setNotice(message);
@@ -273,8 +286,8 @@ export default function Home() {
     flash("已断开云同步，本地记录仍然保留");
   }
 
-  function startPractice(type: QuestionType, wrongOnly = false) {
-    const pool = questions.filter((q) => q.type === type && (!wrongOnly || store.wrong[q.id]));
+  function startPractice(type: QuestionType, { wrongOnly = false, topic = "all" }: PracticeOptions = {}) {
+    const pool = questions.filter((q) => q.type === type && (topic === "all" || q.topic === topic) && (!wrongOnly || store.wrong[q.id]));
     if (!pool.length) return flash(wrongOnly ? "这一题型暂时没有错题" : "演示题库正在载入");
     const now = Date.now();
     const picked = pickPracticeQuestions(pool, store.progress, { includeMastered: wrongOnly, now });
@@ -285,10 +298,15 @@ export default function Home() {
       .map((question) => [question.id, buildOptionOrder(question.options?.length ?? 0)]));
     setStore((s) => ({
       ...s,
-      session: { id: crypto.randomUUID(), type, questionIds: picked.map((q) => q.id), index: 0, answers: {}, optionOrders, startedAt: now, wrongOnly, reviewIds },
+      session: { id: crypto.randomUUID(), type, topic, questionIds: picked.map((q) => q.id), index: 0, answers: {}, optionOrders, startedAt: now, wrongOnly, reviewIds },
     }));
     setScreen("quiz");
     if (picked.length < 15) flash(`当前题库仅有 ${picked.length} 题，本轮使用全部题目`);
+  }
+
+  function openTopicPicker(type: "single" | "judge") {
+    setTopicPickerType(type);
+    setScreen("topic");
   }
 
   function updateAnswer(patch: Partial<Answer>) {
@@ -383,13 +401,17 @@ export default function Home() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try { setStore({ ...emptyStore, ...JSON.parse(String(reader.result)) }); flash("学习数据已恢复"); }
+      try { setStore(sanitizeRetiredQuestionState({ ...emptyStore, ...JSON.parse(String(reader.result)) })); flash("学习数据已恢复"); }
       catch { flash("文件格式无法识别"); }
     };
     reader.readAsText(file);
   }
 
   if (!ready) return null;
+
+  if (screen === "topic" && topicPickerType) {
+    return <TopicPicker type={topicPickerType} questions={questions} progress={store.progress} startPractice={startPractice} onBack={() => setScreen("main")} />;
+  }
 
   if (screen === "quiz" && active && current) {
     const submitted = currentAnswer.submitted;
@@ -401,7 +423,7 @@ export default function Home() {
         {notice && <div className="toast">{notice}</div>}
         <header className="quiz-top">
           <button className="icon-button" onClick={() => goMain("practice")} aria-label="返回">‹</button>
-          <div className="quiz-title"><strong>{typeMeta[current.type].name}</strong><span>{active.wrongOnly ? "错题复习" : "日常练习"}</span></div>
+          <div className="quiz-title"><strong>{typeMeta[current.type].name}</strong><span>{sessionSubtitle(active)}</span></div>
           <button className="plain-button" onClick={finish}>交卷</button>
         </header>
         <div className="progress-row">
@@ -521,18 +543,23 @@ export default function Home() {
             </section>
             <SectionTitle title="选择题型" side="每轮最多 15 题" />
             <div className="type-grid">
-              {(Object.keys(typeMeta) as QuestionType[]).map((type) => (
-                <button className={`type-card ${typeMeta[type].tone}`} key={type} onClick={() => startPractice(type)}>
-                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !store.progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && store.progress[q.id]?.masteredAt).length} 已学会</small></span><b>›</b>
-                </button>
-              ))}
+              {(Object.keys(typeMeta) as QuestionType[]).map((type) => {
+                const typeStats = statsFor(type);
+                const topicHint = (["party-constitution", "party-history"] as const)
+                  .filter((topic) => statsFor(type, topic).total > 0)
+                  .map((topic) => `${topicMeta[topic].short} ${statsFor(type, topic).total}`)
+                  .join(" · ");
+                return <button className={`type-card ${typeMeta[type].tone}`} key={type} onClick={() => type === "single" || type === "judge" ? openTopicPicker(type) : startPractice(type)}>
+                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{typeStats.unmastered} 待学 · {typeStats.mastered} 已学会</small>{type === "single" && topicHint && <small className="topic-hint">{topicHint}</small>}</span><b>›</b>
+                </button>;
+              })}
             </div>
             {active && <button className="continue-card" onClick={() => setScreen("quiz")}><span><small>继续上次练习</small><strong>{typeMeta[active.type].name} · 第 {active.index + 1} 题</strong></span><b>继续 ›</b></button>}
             <button className="wrong-shortcut" onClick={() => setTab("wrong")}><i>↻</i><span><strong>错题复习</strong><small>{wrongCount ? `${wrongCount} 道题等待巩固` : "暂无错题，继续保持"}</small></span><b>›</b></button>
             <div className="demo-note">内容版本 2026.07 · 部分题型仍为流程演示内容</div>
           </>
         )}
-        {tab === "practice" && <PracticePage questions={questions} progress={store.progress} startPractice={startPractice} active={active} resume={() => setScreen("quiz")} />}
+        {tab === "practice" && <PracticePage questions={questions} progress={store.progress} startPractice={startPractice} openTopicPicker={openTopicPicker} active={active} resume={() => setScreen("quiz")} />}
         {tab === "wrong" && <WrongPage questions={questions} wrong={store.wrong} startPractice={startPractice} clearType={(type) => setStore((s) => ({ ...s, wrong: Object.fromEntries(Object.entries(s.wrong).filter(([id]) => questionMap[id]?.type !== type)) }))} />}
         {tab === "stats" && <StatsPage history={store.history} questions={questions} wrongCount={wrongCount} />}
         {tab === "settings" && (
@@ -597,19 +624,38 @@ function SectionTitle({ title, side }: { title: string; side?: string }) {
 function PageHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return <header className="page-header"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1></header>;
 }
-function PracticePage({ questions, progress, startPractice, active, resume }: { questions: Question[]; progress: ProgressMap; startPractice: (t: QuestionType) => void; active: Session | null; resume: () => void }) {
+function TopicPicker({ type, questions, progress, startPractice, onBack }: { type: "single" | "judge"; questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; onBack: () => void }) {
+  const topics: { topic: PracticeTopic; name: string }[] = [
+    { topic: "all", name: "全部" },
+    { topic: "party-constitution", name: topicMeta["party-constitution"].name },
+    { topic: "party-history", name: topicMeta["party-history"].name },
+  ];
+  return <section className="subpage topic-picker">
+    <button className="subpage-back" onClick={onBack}>‹ 返回</button>
+    <PageHeader eyebrow={typeMeta[type].name} title="选择主题" />
+    <div className="topic-picker-list">{topics.map(({ topic, name }) => {
+      const matching = questions.filter((question) => question.type === type && (topic === "all" || question.topic === topic));
+      const mastered = matching.filter((question) => progress[question.id]?.masteredAt).length;
+      const total = matching.length;
+      return <button key={topic} disabled={!total} onClick={() => startPractice(type, { topic })}>
+        <span><strong>{name}</strong><small>{total ? `${total} 题 · ${total - mastered} 待学 · ${mastered} 已学会` : "0 题 · 题库待补充"}</small></span><b>开始 ›</b>
+      </button>;
+    })}</div>
+  </section>;
+}
+function PracticePage({ questions, progress, startPractice, openTopicPicker, active, resume }: { questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; openTopicPicker: (type: "single" | "judge") => void; active: Session | null; resume: () => void }) {
   return <section className="subpage"><PageHeader eyebrow="按题型专项练习" title="开始刷题" />
     {active && <button className="continue-card" onClick={resume}><span><small>未完成的练习</small><strong>{typeMeta[active.type].name} · 第 {active.index + 1}/{active.questionIds.length} 题</strong></span><b>继续 ›</b></button>}
-    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
+    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => type === "single" || type === "judge" ? openTopicPicker(type) : startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
     <div className="tip-card"><b>练习说明</b><p>每轮优先加入没做过的题；连续答对 5 次后标记为“已学会”，后续常规练习不再出现。答错会重新累计。</p></div>
   </section>;
 }
-function WrongPage({ questions, wrong, startPractice, clearType }: { questions: Question[]; wrong: Store["wrong"]; startPractice: (t: QuestionType, w?: boolean) => void; clearType: (t: QuestionType) => void }) {
+function WrongPage({ questions, wrong, startPractice, clearType }: { questions: Question[]; wrong: Store["wrong"]; startPractice: (type: QuestionType, options?: PracticeOptions) => void; clearType: (t: QuestionType) => void }) {
   const [filter, setFilter] = useState<QuestionType>("single");
   const list = questions.filter((q) => q.type === filter && wrong[q.id]);
   return <section className="subpage"><PageHeader eyebrow="连续答对两次自动移出" title="错题本" />
     <div className="filter-tabs">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} className={filter === type ? "active" : ""} onClick={() => setFilter(type)}>{typeMeta[type].short}<em>{questions.filter((q) => q.type === type && wrong[q.id]).length}</em></button>)}</div>
-    {list.length ? <><div className="wrong-actions"><button className="primary-button" onClick={() => startPractice(filter, true)}>练习本类错题</button><button onClick={() => clearType(filter)}>清空</button></div><div className="wrong-list">{list.map((q) => <article key={q.id}><span>{typeMeta[q.type].short}</span><h3>{q.question}</h3><p>错误 {wrong[q.id].count} 次 · 最近 {new Date(wrong[q.id].lastWrong).toLocaleDateString("zh-CN")}</p><div><small>连续答对 {wrong[q.id].streak}/2 次</small><i><b style={{ width: `${wrong[q.id].streak * 50}%` }} /></i></div></article>)}</div></> :
+    {list.length ? <><div className="wrong-actions"><button className="primary-button" onClick={() => startPractice(filter, { wrongOnly: true })}>练习本类错题</button><button onClick={() => clearType(filter)}>清空</button></div><div className="wrong-list">{list.map((q) => <article key={q.id}><span>{typeMeta[q.type].short}</span><h3>{q.question}</h3><p>错误 {wrong[q.id].count} 次 · 最近 {new Date(wrong[q.id].lastWrong).toLocaleDateString("zh-CN")}</p><div><small>连续答对 {wrong[q.id].streak}/2 次</small><i><b style={{ width: `${wrong[q.id].streak * 50}%` }} /></i></div></article>)}</div></> :
       <div className="empty-state"><i>✓</i><h2>这里很干净</h2><p>本题型暂时没有错题。错题会自动收进来，连续答对两次后移出。</p></div>}
   </section>;
 }

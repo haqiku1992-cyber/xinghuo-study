@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { replaceQuestionsByPrefix } from "./question-bank-utils.mjs";
 
 const sourceUrl = "https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm";
 const facts = [
@@ -113,6 +114,7 @@ const singles = facts.map(([chapter, article, question, correct, ...wrong], inde
   return {
     id: `party-constitution-single-${String(index + 1).padStart(3, "0")}`,
     type: "single",
+    topic: "party-constitution",
     question,
     options,
     answer: letters[answerIndex],
@@ -124,5 +126,5 @@ const singles = facts.map(([chapter, article, question, correct, ...wrong], inde
 });
 
 const current = JSON.parse(fs.readFileSync("public/data/questions.json", "utf8"));
-const subjectiveAndJudge = current.filter((question) => question.type !== "single");
-fs.writeFileSync("public/data/questions.json", `${JSON.stringify([...singles, ...subjectiveAndJudge], null, 2)}\n`);
+const next = replaceQuestionsByPrefix(current, "party-constitution-single-", singles);
+fs.writeFileSync("public/data/questions.json", `${JSON.stringify(next, null, 2)}\n`);

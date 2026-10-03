@@ -311,3 +311,14 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
   .bottom-nav,.quiz-footer{bottom:24px;border-radius:0 0 24px 24px}
   .wrong-page-content{height:calc(100dvh - 128px)}
 }
+.topic-hint{color:var(--accent)!important;font-size:10px!important;margin-top:2px!important}
+.topic-picker{padding-top:8px}
+.subpage-back{border:0;background:none;color:var(--muted);padding:5px 0;font-size:13px}
+.topic-picker .page-header{margin-top:14px;margin-bottom:20px}
+.topic-picker-list{display:flex;flex-direction:column;gap:10px}
+.topic-picker-list button{border:1px solid var(--line);border-radius:18px;background:var(--surface);padding:17px 16px;display:flex;align-items:center;text-align:left;gap:12px}
+.topic-picker-list button span{flex:1}
+.topic-picker-list strong,.topic-picker-list small{display:block}
+.topic-picker-list small{color:var(--muted);font-size:12px;margin-top:4px}
+.topic-picker-list b{color:var(--accent);font-size:12px}
+.topic-picker-list button:disabled{background:var(--bg)}
