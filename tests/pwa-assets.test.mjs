@@ -13,7 +13,7 @@ test("PWA manifest contains installable app metadata", async () => {
 
 test("question bank remains separate and has unique IDs", async () => {
   const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
-  assert.ok(questions.length >= 109);
+  assert.equal(questions.length, 206);
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => question.source && question.updated_at));
 });
@@ -22,6 +22,12 @@ test("retired party-history bank is not present", async () => {
   const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
   const partyHistory = questions.filter((question) => question.id.startsWith("party-history-single-"));
   assert.equal(partyHistory.length, 0);
+  assert.equal(questions.filter((question) => question.id.startsWith("demo-judge-")).length, 0);
+});
+
+test("service worker cache is bumped for the new question bank", async () => {
+  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  assert.match(worker, /xinghuo-study-pwa-v7/);
 });
 
 test("service worker precaches the essential offline files", async () => {

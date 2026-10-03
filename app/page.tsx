@@ -14,6 +14,8 @@ type Question = {
   id: string;
   type: QuestionType;
   topic: QuestionTopic;
+  fact_key?: string;
+  reinforces_fact_key?: string;
   question: string;
   options?: string[];
   answer?: string;
