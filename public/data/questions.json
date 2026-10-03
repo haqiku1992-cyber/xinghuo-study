@@ -2764,14 +2764,14 @@
     "id": "party-constitution-judge-029",
     "type": "judge",
     "topic": "party-constitution",
-    "fact_key": "party-constitution:article-4:read-party-documents",
-    "question": "党员享有参加党的有关会议、阅读党的有关文件、接受党的教育和培训的权利。",
+    "fact_key": "party-constitution:article-5:introducer-understanding",
+    "question": "入党介绍人要认真了解申请人的思想、品质、经历和工作表现。",
     "answer": "T",
-    "explanation": "正确。党章第四条第一项明确规定了这些党员权利。",
-    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第一章 党员 · 第四条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
+    "explanation": "正确。党章第五条规定，入党介绍人要认真了解申请人的思想、品质、经历和工作表现。",
+    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第一章 党员 · 第五条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
     "tags": [
       "党员",
-      "第四条",
+      "第五条",
       "2022年党章"
     ],
     "updated_at": "2026-10-03"
@@ -3120,9 +3120,9 @@
     "question": "全国代表会议调整和增选中央委员及候补中央委员的数额，不得超过全国代表大会选出的相应总数的五分之一。",
     "answer": "T",
     "explanation": "正确。党章第二十一条明确了全国代表会议调整和增选中央委员及候补中央委员的数量上限。",
-    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第二章 党的组织制度 · 第二十一条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
+    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第三章 党的中央组织 · 第二十一条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
     "tags": [
-      "党的组织制度",
+      "党的中央组织",
       "第二十一条",
       "2022年党章"
     ],
@@ -3324,14 +3324,14 @@
     "id": "party-constitution-judge-064",
     "type": "judge",
     "topic": "party-constitution",
-    "fact_key": "party-constitution:article-23:politburo-convenes-plenary",
+    "fact_key": "party-constitution:article-22:politburo-convenes-plenary",
     "question": "中央委员会全体会议由中央书记处召集。",
     "answer": "F",
     "explanation": "错误。党章第二十二条规定，中央委员会全体会议由中央政治局召集。",
-    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第三章 党的中央组织 · 第二十三条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
+    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第三章 党的中央组织 · 第二十二条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
     "tags": [
       "党的中央组织",
-      "第二十三条",
+      "第二十二条",
       "2022年党章"
     ],
     "updated_at": "2026-10-03"
@@ -3468,14 +3468,14 @@
     "id": "party-constitution-judge-073",
     "type": "judge",
     "topic": "party-constitution",
-    "fact_key": "party-constitution:article-25:local-levels",
-    "question": "省、自治区、直辖市，设区的市和自治州，以及县级相应地区的党的代表大会每五年举行一次。",
+    "fact_key": "party-constitution:article-28:local-leadership-election-approval",
+    "question": "党的地方各级委员会全体会议选举常务委员会和书记、副书记，并报上级党的委员会批准。",
     "answer": "T",
-    "explanation": "正确。党章第二十五条列明了这些地方各级代表大会及其五年一次的会期。",
-    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第四章 党的地方组织 · 第二十五条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
+    "explanation": "正确。党章第二十八条规定，党的地方各级委员会全体会议选举常务委员会和书记、副书记，并报上级党的委员会批准。",
+    "source": "《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· 第四章 党的地方组织 · 第二十八条 · https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm",
     "tags": [
       "党的地方组织",
-      "第二十五条",
+      "第二十八条",
       "2022年党章"
     ],
     "updated_at": "2026-10-03"
