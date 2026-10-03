@@ -410,7 +410,13 @@ export default function Home() {
   if (!ready) return null;
 
   if (screen === "topic" && topicPickerType) {
-    return <TopicPicker type={topicPickerType} questions={questions} progress={store.progress} startPractice={startPractice} onBack={() => setScreen("main")} />;
+    return (
+      <main className="app-shell">
+        <div className="page-content">
+          <TopicPicker type={topicPickerType} questions={questions} progress={store.progress} startPractice={startPractice} onBack={() => setScreen("main")} />
+        </div>
+      </main>
+    );
   }
 
   if (screen === "quiz" && active && current) {

@@ -47,6 +47,16 @@ test("client syncs on focus and while the page remains open", async () => {
   assert.match(page, /addEventListener\("visibilitychange", onVisible\)/);
 });
 
+test("topic picker uses the shared page shell", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const start = page.indexOf('if (screen === "topic" && topicPickerType)');
+  const end = page.indexOf('if (screen === "quiz"', start);
+  const topicScreen = page.slice(start, end);
+  assert.match(topicScreen, /<main className="app-shell">/);
+  assert.match(topicScreen, /<div className="page-content">/);
+  assert.match(topicScreen, /<TopicPicker[\s\S]*\/>/);
+});
+
 test("public shell uses a discreet product label", async () => {
   const [page, layout] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
