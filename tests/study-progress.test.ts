@@ -5,16 +5,36 @@ import {
   buildOptionOrder,
   buildStudyPlan,
   formatDuration,
+  isRetiredQuestionId,
   MASTERY_STREAK,
   pickPracticeQuestions,
   recordAttempt,
   remapAnswerLetter,
   REVIEW_INTERVAL_DAYS,
+  sanitizeRetiredQuestionState,
   type ProgressMap,
   type QuestionProgress,
 } from "../app/study-progress.ts";
 
 const DAY_MS = 86_400_000;
+
+test("retired party-history state is removed without touching other store data", () => {
+  const state = {
+    progress: { "party-history-single-001": { attempts: 1 }, "party-constitution-single-001": { attempts: 2 } },
+    wrong: { "party-history-single-001": { count: 1 }, "party-constitution-single-001": { count: 2 } },
+    session: { questionIds: ["party-history-single-001"] },
+    history: [{ id: "old-session" }],
+    theme: "dark",
+  };
+
+  assert.equal(isRetiredQuestionId("party-history-single-001"), true);
+  const sanitized = sanitizeRetiredQuestionState(state);
+  assert.deepEqual(sanitized.progress, { "party-constitution-single-001": { attempts: 2 } });
+  assert.deepEqual(sanitized.wrong, { "party-constitution-single-001": { count: 2 } });
+  assert.equal(sanitized.session, null);
+  assert.deepEqual(sanitized.history, state.history);
+  assert.equal(sanitized.theme, "dark");
+});
 
 test("single-choice option order is shuffled and the answer letter follows its option", () => {
   const randomValues = [0.1, 0.7, 0.2];

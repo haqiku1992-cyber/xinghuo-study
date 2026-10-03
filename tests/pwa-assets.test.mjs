@@ -13,23 +13,15 @@ test("PWA manifest contains installable app metadata", async () => {
 
 test("question bank remains separate and has unique IDs", async () => {
   const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
-  assert.ok(questions.length >= 209);
+  assert.ok(questions.length >= 109);
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => question.source && question.updated_at));
 });
 
-test("party-history bank contains 100 traceable four-option questions", async () => {
+test("retired party-history bank is not present", async () => {
   const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
   const partyHistory = questions.filter((question) => question.id.startsWith("party-history-single-"));
-  assert.equal(partyHistory.length, 100);
-  assert.equal(new Set(partyHistory.map((question) => question.question)).size, 100);
-  for (const question of partyHistory) {
-    assert.equal(question.type, "single");
-    assert.equal(question.options.length, 4);
-    assert.equal(new Set(question.options).size, 4);
-    assert.match(question.answer, /^[A-D]$/);
-    assert.match(question.source, /dswxyjy\.org\.cn/);
-  }
+  assert.equal(partyHistory.length, 0);
 });
 
 test("service worker precaches the essential offline files", async () => {
@@ -53,6 +45,16 @@ test("client syncs on focus and while the page remains open", async () => {
   assert.match(page, /setInterval\(\(\) => void refresh\(\), 30000\)/);
   assert.match(page, /addEventListener\("focus", refresh\)/);
   assert.match(page, /addEventListener\("visibilitychange", onVisible\)/);
+});
+
+test("topic picker uses the shared page shell", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const start = page.indexOf('if (screen === "topic" && topicPickerType)');
+  const end = page.indexOf('if (screen === "quiz"', start);
+  const topicScreen = page.slice(start, end);
+  assert.match(topicScreen, /<main className="app-shell">/);
+  assert.match(topicScreen, /<div className="page-content">/);
+  assert.match(topicScreen, /<TopicPicker[\s\S]*\/>/);
 });
 
 test("public shell uses a discreet product label", async () => {

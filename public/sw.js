@@ -1,4 +1,4 @@
-const CACHE_NAME = "xinghuo-study-pwa-v5";
+const CACHE_NAME = "xinghuo-study-pwa-v6";
 const PRECACHE = [
   "/",
   "/manifest.json",

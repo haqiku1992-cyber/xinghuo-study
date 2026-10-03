@@ -14,6 +14,21 @@ export type QuestionProgress = {
 
 export type ProgressMap = Record<string, QuestionProgress>;
 
+export function isRetiredQuestionId(id: string) {
+  return id.startsWith("party-history-single-");
+}
+
+export function sanitizeRetiredQuestionState<T extends {
+  progress: object;
+  wrong: object;
+  session: { questionIds: string[] } | null;
+}>(store: T): T {
+  const progress = Object.fromEntries(Object.entries(store.progress).filter(([id]) => !isRetiredQuestionId(id))) as T["progress"];
+  const wrong = Object.fromEntries(Object.entries(store.wrong).filter(([id]) => !isRetiredQuestionId(id))) as T["wrong"];
+  const session = store.session?.questionIds.some(isRetiredQuestionId) ? null : store.session;
+  return { ...store, progress, wrong, session };
+}
+
 export function recordAttempt(previous: QuestionProgress | undefined, correct: boolean, now = Date.now()): QuestionProgress {
   const correctStreak = correct ? (previous?.correctStreak ?? 0) + 1 : 0;
   const next: QuestionProgress = {
