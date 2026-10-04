@@ -227,6 +227,7 @@ const singles = facts.map(([chapter, article, question, correct, ...wrong], inde
     source: `《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· ${chapter}${article === chapter ? "" : ` · ${article}`} · ${sourceUrl}`,
     tags: [chapter.replace(/^第.+章\s*/, ""), article, "2022年党章"],
     updated_at: "2026-07-30",
+    origin: "generated-from-party-constitution",
     topic: "party-constitution",
     fact_key: factKeys[index]
   };

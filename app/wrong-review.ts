@@ -1,4 +1,4 @@
-export type ObjectiveReviewType = "single" | "judge";
+export type ObjectiveReviewType = "single" | "multiple" | "judge";
 
 export type ReviewAnswer = {
   value: string;
@@ -26,7 +26,7 @@ export function collectWrongReview(
     const answer = answers[questionId];
     if (answer?.submitted !== true || answer.correct !== false) return [];
     const snapshot: WrongReviewSnapshot = { questionId, selectedValue: answer.value };
-    if (type === "single") snapshot.optionOrder = [...(optionOrders?.[questionId] ?? [])];
+    if (type !== "judge") snapshot.optionOrder = [...(optionOrders?.[questionId] ?? [])];
     return [snapshot];
   });
 }

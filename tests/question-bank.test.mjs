@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { auditQuestionBank } from "../scripts/audit-question-bank.mjs";
 import { replaceQuestionsByPrefix } from "../scripts/question-bank-utils.mjs";
+import { buildOfficialQuestions, validateRawSnapshot } from "../scripts/import-official-party-constitution-test.mjs";
 
 const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
 const qualityFixSingleExpectations = new Map([
@@ -60,10 +61,10 @@ const replacedWeakJudgeQuestions = new Set([
 ]);
 
 test("question bank matches the current topic contract", () => {
-  const validTypes = new Set(["single", "judge", "short", "essay"]);
+  const validTypes = new Set(["single", "multiple", "judge", "short", "essay"]);
   const validTopics = new Set(["party-constitution", "party-history", "demo"]);
   const byType = (type) => questions.filter((question) => question.type === type);
-  const constitution = questions.filter((question) => question.type === "single" && question.topic === "party-constitution");
+  const constitution = questions.filter((question) => question.type === "single" && question.topic === "party-constitution" && question.origin === "generated-from-party-constitution");
   const constitutionJudges = questions.filter((question) => question.type === "judge" && question.topic === "party-constitution");
   const history = questions.filter((question) => question.id.startsWith("party-history-single-"));
   const judge029 = questions.find((question) => question.id === "party-constitution-judge-029");
@@ -71,12 +72,13 @@ test("question bank matches the current topic contract", () => {
   const single034 = questions.find((question) => question.id === "party-constitution-single-034");
   const single062 = questions.find((question) => question.id === "party-constitution-single-062");
 
-  assert.equal(questions.length, 206);
+  assert.equal(questions.length, 243);
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => validTypes.has(question.type)));
   assert.ok(questions.every((question) => validTopics.has(question.topic)));
-  assert.deepEqual(Object.fromEntries(["single", "judge", "short", "essay"].map((type) => [type, byType(type).length])), {
-    single: 100,
+  assert.deepEqual(Object.fromEntries(["single", "multiple", "judge", "short", "essay"].map((type) => [type, byType(type).length])), {
+    single: 120,
+    multiple: 17,
     judge: 100,
     short: 3,
     essay: 3,
@@ -86,6 +88,15 @@ test("question bank matches the current topic contract", () => {
   assert.equal(new Set(constitution.map((question) => question.fact_key)).size, constitution.length);
   assert.ok(constitution.every((question) => question.fact_key));
   assert.equal(constitutionJudges.length, 100);
+  const official = questions.filter((question) => question.origin === "official-original");
+  assert.equal(official.length, 37);
+  assert.equal(official.filter((question) => question.type === "single").length, 20);
+  assert.equal(official.filter((question) => question.type === "multiple").length, 17);
+  assert.equal(questions.filter((question) => question.type === "multiple" && question.topic === "party-constitution").length, 17);
+  assert.equal(questions.filter((question) => question.type === "multiple" && question.topic === "party-history").length, 0);
+  assert.ok(official.every((question) => question.origin_collection === "12371-esddz-knowledge-test-37" && question.origin_source === "https://download.12371.cn/wenjian/2022/10/30/esddz600.pdf" && !question.explanation));
+  assert.ok(official.every((question) => question.source.includes(question.origin_source)));
+  assert.equal(questions.filter((question) => question.origin === "generated-from-party-constitution").length, 200);
   assert.ok(constitutionJudges.every((question) => question.fact_key && question.explanation && question.source.includes("https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm")));
   assert.equal(judge029.fact_key, "party-constitution:article-5:introducer-understanding");
   assert.equal(judge073.fact_key, "party-constitution:article-28:local-leadership-election-approval");
@@ -99,10 +110,16 @@ test("question bank matches the current topic contract", () => {
   assert.equal(questions.filter((question) => question.id.startsWith("demo-judge-")).length, 0);
   assert.ok(questions.filter((question) => question.id.startsWith("demo-" )).every((question) => question.topic === "demo"));
 
-  for (const question of byType("single")) {
+  for (const question of constitution) {
     assert.equal(question.options.length, 4);
     assert.equal(new Set(question.options).size, 4);
     assert.match(question.answer, /^[A-D]$/);
+  }
+  for (const question of byType("multiple")) {
+    assert.equal(question.options.length, 4);
+    assert.equal(new Set(question.options).size, 4);
+    assert.match(question.answer, /^[A-D]{2,}$/);
+    assert.equal(question.answer, [...new Set(question.answer)].sort().join(""));
   }
   for (const question of byType("judge")) {
     assert.match(question.answer, /^[TF]$/);
@@ -148,6 +165,10 @@ test("third-blade quality fixes preserve identities and replace weak wording", (
 test("question bank audit has no knowledge-point or normalized-question collisions", () => {
   const report = auditQuestionBank(questions);
   assert.deepEqual(report.errors, []);
+  assert.equal(report.total, 243);
+  assert.equal(report.officialTotal, 37);
+  assert.equal(report.officialSingleCount, 20);
+  assert.equal(report.officialMultipleCount, 17);
   assert.equal(report.singleFactKeyCount, 100);
   assert.equal(report.newKnowledgeCount, 100);
   assert.equal(report.reinforcementCount, 0);
@@ -221,4 +242,25 @@ test("judgment builder namespace replacement keeps other banks", () => {
 
 test("retired party-history builder is absent", () => {
   assert.equal(existsSync(new URL("../scripts/build-party-history-bank.mjs", import.meta.url)), false);
+});
+
+test("official raw snapshot rejects multi-letter single answers", async () => {
+  const raw = JSON.parse(await readFile(new URL("../data/official/12371-esddz-knowledge-test-37.json", import.meta.url), "utf8"));
+  const invalid = JSON.parse(JSON.stringify(raw));
+  invalid.questions[0].answer = "AB";
+  assert.throws(() => validateRawSnapshot(invalid), /answer cardinality mismatch: single-1/);
+});
+
+test("official snapshot validates and produces canonical origin identities", async () => {
+  const raw = JSON.parse(await readFile(new URL("../data/official/12371-esddz-knowledge-test-37.json", import.meta.url), "utf8"));
+  assert.equal(validateRawSnapshot(raw).length, 37);
+  const official = buildOfficialQuestions(raw);
+  assert.deepEqual(official.slice(0, 2).map((question) => [question.id, question.origin_question_id, question.answer]), [
+    ["official-12371-dztest-single-001", "single-01", "C"],
+    ["official-12371-dztest-single-002", "single-02", "B"],
+  ]);
+  assert.equal(official.filter((question) => question.type === "multiple").length, 17);
+  assert.equal(questions.filter((question) => question.type === "multiple" && question.topic === "party-constitution").length, 17);
+  assert.equal(questions.filter((question) => question.type === "multiple" && question.topic === "party-history").length, 0);
+  assert.ok(official.every((question) => !Object.hasOwn(question, "explanation")));
 });

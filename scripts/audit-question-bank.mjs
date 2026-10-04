@@ -1,6 +1,8 @@
 import fs from "node:fs";
 
-const OFFICIAL_SOURCE = "https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm";
+export const OFFICIAL_SOURCE = "https://download.12371.cn/wenjian/2022/10/30/esddz600.pdf";
+const GENERATED_SOURCE = "https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm";
+const OFFICIAL_COLLECTION = "12371-esddz-knowledge-test-37";
 const RETIRED_PREFIXES = ["party-history-single-", "demo-judge-"];
 const CHAPTER_ARTICLE_RANGES = {
   "总纲": null,
@@ -16,8 +18,7 @@ const CHAPTER_ARTICLE_RANGES = {
   "党和共产主义青年团的关系": [51, 52],
   "党徽党旗": [53, 55],
 };
-
-const CHINESE_DIGITS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+const CHINESE_DIGITS = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
 
 function parseChineseNumber(value) {
   if (value === "十") return 10;
@@ -40,6 +41,36 @@ export function normalizeQuestion(question) {
     .replace(/[“”‘’'"，。？！、：；（）()《》【】\[\]—\-]/g, "");
 }
 
+function isGeneratedFormal(question) {
+  return question.origin === "generated-from-party-constitution"
+    || question.id?.startsWith("party-constitution-single-")
+    || question.id?.startsWith("party-constitution-judge-");
+}
+
+function isOfficial(question) {
+  return question.origin === "official-original";
+}
+
+function validateAnswerShape(question, errors) {
+  if (question.type === "judge") {
+    if (!/^[TF]$/.test(question.answer ?? "")) errors.push(`invalid judge answer: ${question.id}`);
+    return;
+  }
+  if (!Array.isArray(question.options) || question.options.length < 2 || new Set(question.options).size !== question.options.length) {
+    errors.push(`invalid options: ${question.id}`);
+    return;
+  }
+  if (question.type === "single") {
+    if (!/^[A-Z]$/.test(question.answer ?? "") || question.answer.charCodeAt(0) - 65 >= question.options.length) errors.push(`invalid single-choice answer: ${question.id}`);
+  }
+  if (question.type === "multiple") {
+    const answer = question.answer ?? "";
+    if (!/^[A-Z]{2,}$/.test(answer) || answer !== [...new Set(answer)].sort().join("") || [...answer].some((letter) => letter.charCodeAt(0) - 65 >= question.options.length)) {
+      errors.push(`invalid multiple-choice answer: ${question.id}`);
+    }
+  }
+}
+
 export function auditQuestionBank(questions) {
   const errors = [];
   const metadataErrors = [];
@@ -48,21 +79,37 @@ export function auditQuestionBank(questions) {
   const ids = new Map();
   const normalizedQuestions = new Map();
   const factKeys = new Map();
-  const formal = questions.filter((question) => question.type === "single" || question.type === "judge");
-  const singles = questions.filter((question) => question.type === "single");
-  const judges = questions.filter((question) => question.type === "judge");
+  const singles = questions.filter((question) => question.type === "single" && isGeneratedFormal(question));
+  const judges = questions.filter((question) => question.type === "judge" && isGeneratedFormal(question));
+  const official = questions.filter(isOfficial);
+  const officialSingles = official.filter((question) => question.type === "single");
+  const officialMultiples = official.filter((question) => question.type === "multiple");
   const singleFactKeys = new Set(singles.map((question) => question.fact_key).filter(Boolean));
 
   for (const question of questions) {
     if (ids.has(question.id)) errors.push(`duplicate id: ${question.id}`);
     ids.set(question.id, question);
-
     const normalized = normalizeQuestion(question.question);
     if (normalizedQuestions.has(normalized)) errors.push(`duplicate normalized question: ${question.id} and ${normalizedQuestions.get(normalized)}`);
     normalizedQuestions.set(normalized, question.id);
-
     if (RETIRED_PREFIXES.some((prefix) => String(question.id).startsWith(prefix))) errors.push(`retired question id returned: ${question.id}`);
-    if (formal.includes(question)) {
+    if (!["single", "multiple", "judge", "short", "essay"].includes(question.type)) errors.push(`invalid question type: ${question.id}`);
+    if (question.type === "single" || question.type === "multiple" || question.type === "judge") validateAnswerShape(question, errors);
+
+    if (isOfficial(question)) {
+      const expectedType = question.origin_type;
+      const expectedNumber = question.origin_question_id?.match(/^(single|multiple)-(\d{2})$/)?.[2];
+      if (question.topic !== "party-constitution") errors.push(`official question has invalid topic: ${question.id}`);
+      if (question.origin_collection !== OFFICIAL_COLLECTION || question.origin_source !== OFFICIAL_SOURCE || expectedType !== question.type || !expectedNumber) {
+        const error = `invalid official origin metadata: ${question.id}`;
+        metadataErrors.push(error);
+        errors.push(error);
+      }
+      if (!question.source?.includes(OFFICIAL_SOURCE)) errors.push(`official question source is not PDF: ${question.id}`);
+      if (question.explanation) errors.push(`official question unexpectedly has explanation: ${question.id}`);
+    }
+
+    if (isGeneratedFormal(question)) {
       const [chapter, article] = question.tags ?? [];
       const articleNumber = parseArticleNumber(article);
       const range = CHAPTER_ARTICLE_RANGES[chapter];
@@ -74,26 +121,23 @@ export function auditQuestionBank(questions) {
         metadataErrors.push(error);
         errors.push(error);
       }
-      if (question.topic !== "party-constitution") errors.push(`formal question has invalid topic: ${question.id}`);
-      if (!question.fact_key) errors.push(`formal question is missing fact_key: ${question.id}`);
-      if (!question.explanation?.trim()) errors.push(`formal question is missing explanation: ${question.id}`);
-      if (!question.source?.trim()) errors.push(`formal question is missing source: ${question.id}`);
-      if (!question.source?.includes(OFFICIAL_SOURCE)) errors.push(`formal question source is not official: ${question.id}`);
+      if (question.topic !== "party-constitution") errors.push(`generated question has invalid topic: ${question.id}`);
+      if (!question.fact_key) errors.push(`generated question is missing fact_key: ${question.id}`);
+      if (!question.explanation?.trim()) errors.push(`generated question is missing explanation: ${question.id}`);
+      if (!question.source?.trim()) errors.push(`generated question is missing source: ${question.id}`);
+      if (!question.source?.includes(GENERATED_SOURCE)) errors.push(`generated question source is not official: ${question.id}`);
       if (question.source && (!question.source.includes(chapter) || (article !== "总纲" && !question.source.includes(article)))) {
         const error = `source chapter/article metadata mismatch: ${question.id}`;
         metadataErrors.push(error);
         errors.push(error);
       }
-
       const factKeyArticle = question.fact_key?.match(/^party-constitution:article-(\d+):/)?.[1];
       if (factKeyArticle && Number(factKeyArticle) !== articleNumber) {
         const error = `fact_key/article mismatch: ${question.id}`;
         factKeyArticleMismatches.push(error);
         errors.push(error);
       }
-
-      const explanationArticles = [...String(question.explanation ?? "").matchAll(/党章第([一二三四五六七八九十]+)条/g)]
-        .map((match) => parseChineseNumber(match[1]));
+      const explanationArticles = [...String(question.explanation ?? "").matchAll(/党章第([一二三四五六七八九十]+)条/g)].map((match) => parseChineseNumber(match[1]));
       if (explanationArticles.some((number) => number !== articleNumber)) {
         const error = `explanation/article mismatch: ${question.id}`;
         explanationArticleMismatches.push(error);
@@ -105,31 +149,28 @@ export function auditQuestionBank(questions) {
       if (previous) errors.push(`duplicate fact_key: ${question.fact_key} (${previous}, ${question.id})`);
       factKeys.set(question.fact_key, question.id);
     }
-    if (question.type === "single" && (!Array.isArray(question.options) || !/^[A-D]$/.test(question.answer))) errors.push(`invalid single-choice answer: ${question.id}`);
-    if (question.type === "judge" && !/^[TF]$/.test(question.answer)) errors.push(`invalid judge answer: ${question.id}`);
   }
 
   const conflicts = judges.filter((question) => singleFactKeys.has(question.fact_key) && !question.reinforces_fact_key);
   for (const question of conflicts) errors.push(`judge fact_key conflicts with single: ${question.id}`);
-
   const reinforcements = judges.filter((question) => question.reinforces_fact_key);
-  for (const question of reinforcements) {
-    if (!singleFactKeys.has(question.reinforces_fact_key)) errors.push(`reinforcement points to unknown single fact_key: ${question.id}`);
-  }
+  for (const question of reinforcements) if (!singleFactKeys.has(question.reinforces_fact_key)) errors.push(`reinforcement points to unknown single fact_key: ${question.id}`);
   if (reinforcements.length > judges.length * 0.15) errors.push(`too many reinforcement questions: ${reinforcements.length}/${judges.length}`);
-
   const trueCount = judges.filter((question) => question.answer === "T").length;
   const falseCount = judges.filter((question) => question.answer === "F").length;
   if (judges.length && Math.min(trueCount, falseCount) < judges.length * 0.4) errors.push(`judge answers are imbalanced: T=${trueCount}, F=${falseCount}`);
-
   const chapterCounts = {};
   for (const question of judges) {
     const chapter = question.tags?.[0] ?? "未标注";
     chapterCounts[chapter] = (chapterCounts[chapter] ?? 0) + 1;
   }
-
-  const report = {
+  return {
     total: questions.length,
+    officialTotal: official.length,
+    officialSingleCount: officialSingles.length,
+    officialMultipleCount: officialMultiples.length,
+    generatedSingleCount: singles.length,
+    generatedJudgeCount: judges.length,
     judgeTotal: judges.length,
     trueCount,
     falseCount,
@@ -144,7 +185,6 @@ export function auditQuestionBank(questions) {
     explanationArticleMismatches,
     errors,
   };
-  return report;
 }
 
 if (process.argv[1]?.endsWith("audit-question-bank.mjs")) {
