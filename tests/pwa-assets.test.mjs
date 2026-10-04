@@ -77,8 +77,16 @@ test("quiz submit slot preserves space across submitted states", async () => {
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
   ]);
-  assert.match(page, /<div className="submit-slot">[\s\S]*!submitted[\s\S]*提交答案[\s\S]*<\/div>/);
+  assert.match(page, /<div className="submit-slot">[\s\S]*<button/);
+  assert.doesNotMatch(page, /submit-slot[\s\S]*!submitted/);
+  assert.match(page, /className=\{`primary-button\$\{submitted \? " submit-placeholder" : ""\}`\}/);
+  assert.match(page, /disabled=\{submitted\}/);
+  assert.match(page, /aria-hidden=\{submitted \? true : undefined\}/);
+  assert.match(page, /tabIndex=\{submitted \? -1 : undefined\}/);
+  assert.match(page, /subjective \? "查看参考答案" : "提交答案"/);
   assert.doesNotMatch(page, /submitted[\s\S]{0,120}scrollIntoView|submitted[\s\S]{0,120}scrollTo/);
-  assert.match(css, /\.submit-slot\{min-height:68px;padding-top:19px\}/);
+  assert.doesNotMatch(css, /\.submit-slot\{[^}]*min-height/);
+  assert.match(css, /\.submit-slot\{padding-top:19px\}/);
   assert.match(css, /\.submit-slot \.primary-button\{margin-top:0\}/);
+  assert.match(css, /\.submit-placeholder\{visibility:hidden;pointer-events:none\}/);
 });

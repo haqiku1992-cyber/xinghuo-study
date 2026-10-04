@@ -470,11 +470,15 @@ export default function Home() {
             />
           )}
           <div className="submit-slot">
-            {!submitted && (
-              <button className="primary-button" onClick={subjective ? () => updateAnswer({ submitted: true }) : submitObjective}>
+            <button
+              className={`primary-button${submitted ? " submit-placeholder" : ""}`}
+              disabled={submitted}
+              aria-hidden={submitted ? true : undefined}
+              tabIndex={submitted ? -1 : undefined}
+              onClick={subjective ? () => updateAnswer({ submitted: true }) : submitObjective}
+            >
                 {subjective ? "查看参考答案" : "提交答案"}
-              </button>
-            )}
+            </button>
           </div>
         </article>
 
