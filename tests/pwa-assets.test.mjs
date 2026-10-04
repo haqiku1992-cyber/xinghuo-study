@@ -90,3 +90,16 @@ test("quiz submit slot preserves space across submitted states", async () => {
   assert.match(css, /\.submit-slot \.primary-button\{margin-top:0\}/);
   assert.match(css, /\.submit-placeholder\{visibility:hidden;pointer-events:none\}/);
 });
+
+test("round wrong review is objective-only, ordered, and read-only", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /collectWrongReview\(active\.questionIds, active\.answers, active\.optionOrders/);
+  assert.match(page, /objective && wrongReview\.length > 0[\s\S]*wrongReviewLabel\(wrongReview\.length\)/);
+  const reviewStart = page.indexOf('if (screen === "review"');
+  const quizStart = page.indexOf('if (screen === "quiz"', reviewStart);
+  assert.ok(reviewStart >= 0 && quizStart > reviewStart);
+  const reviewScreen = page.slice(reviewStart, quizStart);
+  assert.match(reviewScreen, /结束复盘/);
+  assert.match(reviewScreen, /setScreen\("report"\)/);
+  assert.doesNotMatch(reviewScreen, /recordAttempt|updateAnswer|submitObjective|rateSubjective|setStore/);
+});

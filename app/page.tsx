@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildOptionOrder, buildStudyPlan, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, remapAnswerLetter, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
+import { collectWrongReview, type WrongReviewSnapshot, wrongReviewLabel } from "./wrong-review";
 
 type QuestionType = "single" | "judge" | "short" | "essay";
 type QuestionTopic = "party-constitution" | "party-history" | "demo";
 type PracticeTopic = "all" | Exclude<QuestionTopic, "demo">;
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
+type Screen = "main" | "topic" | "quiz" | "report" | "review";
 type Rating = "mastered" | "fuzzy" | "unknown";
 type PracticeOptions = { wrongOnly?: boolean; topic?: PracticeTopic };
 type Answer = { value: string; submitted?: boolean; correct?: boolean; rating?: Rating };
@@ -101,10 +103,12 @@ export default function Home() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [store, setStore] = useState<Store>(emptyStore);
   const [tab, setTab] = useState<Tab>("home");
-  const [screen, setScreen] = useState<"main" | "topic" | "quiz" | "report">("main");
+  const [screen, setScreen] = useState<Screen>("main");
   const [topicPickerType, setTopicPickerType] = useState<"single" | "judge" | null>(null);
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HistoryItem | null>(null);
+  const [wrongReview, setWrongReview] = useState<WrongReviewSnapshot[]>([]);
+  const [reviewIndex, setReviewIndex] = useState(0);
   const [notice, setNotice] = useState("");
   const [syncSecret, setSyncSecret] = useState("");
   const [syncInput, setSyncInput] = useState("");
@@ -298,6 +302,7 @@ export default function Home() {
     const optionOrders = Object.fromEntries(picked
       .filter((question) => question.type === "single" && question.options)
       .map((question) => [question.id, buildOptionOrder(question.options?.length ?? 0)]));
+    setWrongReview([]);
     setStore((s) => ({
       ...s,
       session: { id: crypto.randomUUID(), type, topic, questionIds: picked.map((q) => q.id), index: 0, answers: {}, optionOrders, startedAt: now, wrongOnly, reviewIds },
@@ -367,10 +372,23 @@ export default function Home() {
     setStore((s) => s.session ? ({ ...s, session: { ...s.session, index: Math.max(0, Math.min(s.session.questionIds.length - 1, s.session.index + delta)) } }) : s);
   }
 
+  function moveReview(delta: number) {
+    setReviewIndex((index) => Math.max(0, Math.min(wrongReview.length - 1, index + delta)));
+  }
+
+  function openWrongReview() {
+    if (!wrongReview.length) return;
+    setReviewIndex(0);
+    setScreen("review");
+  }
+
   function finish() {
     if (!active) return;
     const isObjective = active.type === "single" || active.type === "judge";
     const answers = Object.values(active.answers).filter((a) => a.submitted);
+    const wrongReviewSnapshot = isObjective
+      ? collectWrongReview(active.questionIds, active.answers, active.optionOrders, active.type === "single" ? "single" : "judge")
+      : [];
     const finishedAt = Date.now();
     const item: HistoryItem = {
       id: active.id, type: active.type, at: finishedAt, durationMs: Math.max(0, finishedAt - active.startedAt), count: answers.length,
@@ -381,6 +399,7 @@ export default function Home() {
         unknown: answers.filter((a) => a.rating === "unknown").length,
       },
     };
+    setWrongReview(wrongReviewSnapshot);
     setStore((s) => ({ ...s, session: null, history: [...s.history, item] }));
     setReport(item);
     setScreen("report");
@@ -417,6 +436,58 @@ export default function Home() {
         <div className="page-content">
           <TopicPicker type={topicPickerType} questions={questions} progress={store.progress} startPractice={startPractice} onBack={() => setScreen("main")} />
         </div>
+      </main>
+    );
+  }
+
+  if (screen === "review" && wrongReview.length) {
+    const reviewItem = wrongReview[reviewIndex] ?? wrongReview[0];
+    const reviewQuestion = questionMap[reviewItem.questionId];
+    if (!reviewQuestion) return null;
+    const reviewOptionOrder = reviewQuestion.options?.map((_, index) => reviewItem.optionOrder?.[index] ?? index) ?? [];
+    const reviewDisplayedAnswer = remapAnswerLetter(reviewQuestion.answer, reviewOptionOrder);
+    const selectedLabel = reviewQuestion.type === "judge" ? (reviewItem.selectedValue === "T" ? "正确" : "错误") : reviewItem.selectedValue;
+    const correctLabel = reviewQuestion.type === "judge" ? (reviewQuestion.answer === "T" ? "正确" : "错误") : reviewDisplayedAnswer;
+    return (
+      <main className="app-shell quiz-shell">
+        <header className="quiz-top">
+          <button className="icon-button" onClick={() => setScreen("report")} aria-label="返回结算页">‹</button>
+          <div className="quiz-title"><strong>本轮错题复盘</strong><span>第 {reviewIndex + 1} / {wrongReview.length} 题</span></div>
+          <span className="plain-button">只读</span>
+        </header>
+        <article className="question-card">
+          <div className="question-tags"><span>{typeMeta[reviewQuestion.type].short}</span>{reviewQuestion.tags.map((tag) => <em key={tag}>{tag}</em>)}</div>
+          <h1>{reviewQuestion.question}</h1>
+          {reviewQuestion.type === "single" && (
+            <div className="options">
+              {reviewOptionOrder.map((originalIndex, index) => {
+                const option = reviewQuestion.options?.[originalIndex] ?? "";
+                const letter = String.fromCharCode(65 + index);
+                const className = letter === reviewDisplayedAnswer ? "correct" : letter === reviewItem.selectedValue ? "wrong-answer" : "";
+                return <button key={`${reviewQuestion.id}-${originalIndex}`} className={className} disabled><b>{letter}</b><span>{option}</span></button>;
+              })}
+            </div>
+          )}
+          {reviewQuestion.type === "judge" && (
+            <div className="judge-grid">
+              {[['正确', 'T', '✓'], ['错误', 'F', '×']].map(([label, value, icon]) => (
+                <button key={value} disabled className={value === reviewQuestion.answer ? "correct" : value === reviewItem.selectedValue ? "wrong-answer" : ""}><b>{icon}</b>{label}</button>
+              ))}
+            </div>
+          )}
+        </article>
+        <section className="answer-panel">
+          <div className="answer-result bad"><span>你选择：{selectedLabel}</span><span>正确答案：{correctLabel}</span></div>
+          <div className="reference">
+            <span className="eyebrow">答案解析</span>
+            <p>{reviewQuestion.explanation || "暂无解析"}</p>
+            <small>来源：{reviewQuestion.source}</small>
+          </div>
+        </section>
+        <footer className="quiz-footer">
+          <button disabled={reviewIndex === 0} onClick={() => moveReview(-1)}>上一题</button>
+          <button className="next-button" onClick={() => reviewIndex === wrongReview.length - 1 ? setScreen("report") : moveReview(1)}>{reviewIndex === wrongReview.length - 1 ? "结束复盘" : "下一题"}</button>
+        </footer>
       </main>
     );
   }
@@ -528,6 +599,7 @@ export default function Home() {
             <><div><strong>{report.ratings.mastered}</strong><span>掌握</span></div><div><strong>{report.ratings.fuzzy}</strong><span>模糊</span></div><div><strong>{report.ratings.unknown}</strong><span>不会</span></div></>}
         </div>
         <div className="report-note">用时 {formatDuration(report.durationMs)} · 错题会进入复习区</div>
+        {objective && wrongReview.length > 0 && <button className="secondary-button" onClick={openWrongReview}>{wrongReviewLabel(wrongReview.length)}</button>}
         <button className="primary-button" onClick={() => startPractice(report.type)}>再练一轮</button>
         <button className="secondary-button" onClick={() => goMain("home")}>返回首页</button>
       </main>
