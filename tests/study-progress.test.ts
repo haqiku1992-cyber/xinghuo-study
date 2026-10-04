@@ -15,6 +15,7 @@ import {
   type ProgressMap,
   type QuestionProgress,
 } from "../app/study-progress.ts";
+import { collectWrongReview, wrongReviewLabel } from "../app/wrong-review.ts";
 
 const DAY_MS = 86_400_000;
 
@@ -127,4 +128,41 @@ test("practice duration is formatted with minutes and seconds", () => {
   assert.equal(formatDuration(42_000), "42 秒");
   assert.equal(formatDuration(60_000), "1 分钟");
   assert.equal(formatDuration(754_000), "12 分 34 秒");
+});
+
+test("round wrong review snapshots only submitted incorrect answers in active order", () => {
+  const optionOrders = {
+    "q-1": [2, 0, 1, 3],
+    "q-3": [1, 3, 0, 2],
+  };
+  const reviews = collectWrongReview(
+    ["q-1", "q-2", "q-3", "q-4"],
+    {
+      "q-1": { value: "B", submitted: true, correct: false },
+      "q-2": { value: "A", submitted: true, correct: true },
+      "q-3": { value: "D", submitted: true, correct: false },
+      "q-4": { value: "C" },
+    },
+    optionOrders,
+    "single",
+  );
+  assert.deepEqual(reviews, [
+    { questionId: "q-1", selectedValue: "B", optionOrder: [2, 0, 1, 3] },
+    { questionId: "q-3", selectedValue: "D", optionOrder: [1, 3, 0, 2] },
+  ]);
+  assert.notStrictEqual(reviews[0].optionOrder, optionOrders["q-1"]);
+});
+
+test("judge wrong review preserves the selected value without generating an option order", () => {
+  assert.deepEqual(collectWrongReview(
+    ["judge-1", "judge-2"],
+    { "judge-1": { value: "F", submitted: true, correct: false }, "judge-2": { value: "T" } },
+    undefined,
+    "judge",
+  ), [{ questionId: "judge-1", selectedValue: "F" }]);
+});
+
+test("wrong review report label hides zero and names multiple errors", () => {
+  assert.equal(wrongReviewLabel(0), "");
+  assert.equal(wrongReviewLabel(2), "复盘本轮错题 · 2");
 });
