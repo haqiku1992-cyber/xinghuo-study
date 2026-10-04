@@ -322,3 +322,6 @@ button:focus-visible{outline:2px solid color-mix(in srgb,var(--accent) 55%,trans
 .topic-picker-list small{color:var(--muted);font-size:12px;margin-top:4px}
 .topic-picker-list b{color:var(--accent);font-size:12px}
 .topic-picker-list button:disabled{background:var(--bg)}
+.submit-slot{padding-top:19px}
+.submit-slot .primary-button{margin-top:0}
+.submit-placeholder{visibility:hidden;pointer-events:none}
