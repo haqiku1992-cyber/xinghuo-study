@@ -125,6 +125,12 @@ test("third-blade quality fixes preserve identities and replace weak wording", (
     assert.equal(new Set(question.options).size, 4);
   }
 
+  const single073 = byId.get("party-constitution-single-073");
+  assert.equal(single073.answer, "A");
+  assert.deepEqual(single073.options, ["特权化", "革命化", "年轻化", "专业化"]);
+  const cadreTeamTerms = new Set(["革命化", "年轻化", "知识化", "专业化"]);
+  assert.ok(single073.options.slice(1).every((option) => cadreTeamTerms.has(option)));
+
   assert.equal(qualityFixJudgeExpectations.size, 13);
   for (const [id, [factKey, expectedQuestion]] of qualityFixJudgeExpectations) {
     const question = byId.get(id);
