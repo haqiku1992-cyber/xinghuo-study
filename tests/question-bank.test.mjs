@@ -94,7 +94,7 @@ test("question bank matches the current topic contract", () => {
   assert.equal(official.length, 37);
   const officialPublished = questions.filter((question) => question.origin === "official-published");
   assert.equal(officialPublished.length, 100);
-  assert.ok(officialPublished.every((question) => question.type === "fill" && question.topic === "twentieth-congress" && question.reference_answer && !Object.hasOwn(question, "answer") && !Object.hasOwn(question, "explanation")));
+  assert.ok(officialPublished.every((question) => question.type === "fill" && question.topic === "twentieth-congress" && question.question.includes("____") && question.reference_answer && !Object.hasOwn(question, "answer") && !Object.hasOwn(question, "explanation")));
   assert.deepEqual([officialPublished[0].id, officialPublished.at(-1).id], ["official-12371-20th-fill-001", "official-12371-20th-fill-100"]);
   assert.equal(official.filter((question) => question.type === "single").length, 20);
   assert.equal(official.filter((question) => question.type === "multiple").length, 17);
@@ -283,6 +283,9 @@ test("official published 100-question raw snapshot is canonical and stable", asy
   const built = buildOfficialFillQuestions(raw);
   assert.equal(built.length, 100);
   assert.ok(built.every((question) => question.origin === "official-published" && question.origin_publisher === "共产党员网" && question.origin_source_attribution === "中国组织人事报" && question.origin_canonical_url.startsWith("https://www.12371.cn/")));
+  const missingBlank = structuredClone(raw);
+  missingBlank.questions[0].question = missingBlank.questions[0].question.replace(/_{4,}/g, " ");
+  assert.throws(() => validateOfficialFillRaw(missingBlank), /missing visible blank marker: 1/);
 });
 
 test("fill questions use the subjective answer-reference path", async () => {

@@ -40,6 +40,7 @@ export function validateRawSnapshot(raw) {
     assert.match(item.source_url, /^https:\/\/www\.12371\.cn\//, `non-canonical source URL: ${item.global_number}`);
     assert.match(item.published_at, /^\d{4}-\d{2}-\d{2}$/, `invalid publication date: ${item.global_number}`);
     assert.ok(normalizeText(item.question), `empty question: ${item.global_number}`);
+    assert.match(normalizeText(item.question), /_{4,}/, `missing visible blank marker: ${item.global_number}`);
     assert.ok(normalizeText(item.answer), `empty answer: ${item.global_number}`);
     const originQuestionId = `part-${String(item.part).padStart(2, "0")}-q-${String(item.number).padStart(2, "0")}`;
     assert.match(originQuestionId, PART_ID_PATTERN, `invalid origin question ID: ${originQuestionId}`);
@@ -101,4 +102,3 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
   const questions = importOfficialQuestions();
   console.log(`Imported ${questions.filter((question) => question.id?.startsWith(OFFICIAL_PREFIX)).length} official fill questions into ${path.relative(ROOT, QUESTIONS_PATH)}`);
 }
-
