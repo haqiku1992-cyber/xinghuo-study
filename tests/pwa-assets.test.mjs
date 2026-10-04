@@ -13,7 +13,7 @@ test("PWA manifest contains installable app metadata", async () => {
 
 test("question bank remains separate and has unique IDs", async () => {
   const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
-  assert.equal(questions.length, 243);
+  assert.equal(questions.length, 343);
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => question.source && question.updated_at));
 });
@@ -27,7 +27,7 @@ test("retired party-history bank is not present", async () => {
 
 test("service worker cache is bumped for the new question bank", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  assert.match(worker, /xinghuo-study-pwa-v8/);
+  assert.match(worker, /xinghuo-study-pwa-v9/);
 });
 
 test("service worker precaches the essential offline files", async () => {
@@ -83,7 +83,7 @@ test("quiz submit slot preserves space across submitted states", async () => {
   assert.match(page, /disabled=\{submitted\}/);
   assert.match(page, /aria-hidden=\{submitted \? true : undefined\}/);
   assert.match(page, /tabIndex=\{submitted \? -1 : undefined\}/);
-  assert.match(page, /subjective \? "查看参考答案" : "提交答案"/);
+  assert.match(page, /\{current\.type === "fill"\s*\?\s*"查看官方答案"\s*:\s*subjective\s*\?\s*"查看参考答案"\s*:\s*"提交答案"\}/);
   assert.doesNotMatch(page, /submitted[\s\S]{0,120}scrollIntoView|submitted[\s\S]{0,120}scrollTo/);
   assert.doesNotMatch(css, /\.submit-slot\{[^}]*min-height/);
   assert.match(css, /\.submit-slot\{padding-top:19px\}/);
@@ -119,7 +119,7 @@ test("official multiple-choice bank is present with origin metadata", async () =
 
 test("topic picker exposes multiple-choice topics and disables empty party history", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /type: "single" \| "multiple" \| "judge"/);
+  assert.match(page, /type: "single" \| "multiple" \| "judge" \| "fill"/);
   assert.match(page, /disabled=\{!total\}/);
   assert.match(page, /party-history/);
 });

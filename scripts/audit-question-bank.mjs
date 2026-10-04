@@ -3,6 +3,8 @@ import fs from "node:fs";
 export const OFFICIAL_SOURCE = "https://download.12371.cn/wenjian/2022/10/30/esddz600.pdf";
 const GENERATED_SOURCE = "https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm";
 const OFFICIAL_COLLECTION = "12371-esddz-knowledge-test-37";
+const TWENTIETH_COLLECTION = "12371-twentieth-congress-100";
+const TWENTIETH_COLLECTION_URL = "https://www.12371.cn/2022/11/18/ARTI1668764296008244.shtml";
 const RETIRED_PREFIXES = ["party-history-single-", "demo-judge-"];
 const CHAPTER_ARTICLE_RANGES = {
   "总纲": null,
@@ -84,6 +86,8 @@ export function auditQuestionBank(questions) {
   const official = questions.filter(isOfficial);
   const officialSingles = official.filter((question) => question.type === "single");
   const officialMultiples = official.filter((question) => question.type === "multiple");
+  const officialPublished = questions.filter((question) => question.origin === "official-published");
+  const fills = questions.filter((question) => question.type === "fill");
   const singleFactKeys = new Set(singles.map((question) => question.fact_key).filter(Boolean));
 
   for (const question of questions) {
@@ -93,8 +97,24 @@ export function auditQuestionBank(questions) {
     if (normalizedQuestions.has(normalized)) errors.push(`duplicate normalized question: ${question.id} and ${normalizedQuestions.get(normalized)}`);
     normalizedQuestions.set(normalized, question.id);
     if (RETIRED_PREFIXES.some((prefix) => String(question.id).startsWith(prefix))) errors.push(`retired question id returned: ${question.id}`);
-    if (!["single", "multiple", "judge", "short", "essay"].includes(question.type)) errors.push(`invalid question type: ${question.id}`);
+    if (!["single", "multiple", "judge", "fill", "short", "essay"].includes(question.type)) errors.push(`invalid question type: ${question.id}`);
     if (question.type === "single" || question.type === "multiple" || question.type === "judge") validateAnswerShape(question, errors);
+    if (question.type === "fill") {
+      if (!question.reference_answer?.trim()) errors.push("fill missing reference_answer: " + question.id);
+      if (Object.hasOwn(question, "answer")) errors.push("fill must not have objective answer: " + question.id);
+      if (Object.hasOwn(question, "explanation")) errors.push("fill must not have generated explanation: " + question.id);
+      if (Object.hasOwn(question, "options")) errors.push("fill must not have options: " + question.id);
+    }
+    if (question.origin === "official-published") {
+      const canonical = /^https:\/\/www\.12371\.cn\/\d{4}\/\d{2}\/\d{2}\/ARTI\d+\.shtml$/.test(question.origin_canonical_url ?? "");
+      const validId = /^part-\d{2}-q-\d{2}$/.test(question.origin_question_id ?? "");
+      if (question.type !== "fill" || question.topic !== "twentieth-congress" || question.origin_collection !== TWENTIETH_COLLECTION || question.origin_collection_url !== TWENTIETH_COLLECTION_URL || question.origin_publisher !== "共产党员网" || question.origin_title !== "党的二十大精神应知应会百题" || question.origin_source_attribution !== "中国组织人事报" || !canonical || !validId || question.origin_published_at === undefined) {
+        const error = "invalid official-published origin metadata: " + question.id;
+        metadataErrors.push(error);
+        errors.push(error);
+      }
+      if (!question.source?.includes("12371.cn") || !question.source?.includes("中国组织人事报")) errors.push("official-published source is incomplete: " + question.id);
+    }
 
     if (isOfficial(question)) {
       const expectedType = question.origin_type;
@@ -166,6 +186,8 @@ export function auditQuestionBank(questions) {
   }
   return {
     total: questions.length,
+    fillCount: fills.length,
+    officialPublishedCount: officialPublished.length,
     officialTotal: official.length,
     officialSingleCount: officialSingles.length,
     officialMultipleCount: officialMultiples.length,
