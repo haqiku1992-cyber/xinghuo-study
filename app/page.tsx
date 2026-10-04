@@ -469,11 +469,13 @@ export default function Home() {
               onChange={(e) => updateAnswer({ value: e.target.value })}
             />
           )}
-          {!submitted && (
-            <button className="primary-button" onClick={subjective ? () => updateAnswer({ submitted: true }) : submitObjective}>
-              {subjective ? "查看参考答案" : "提交答案"}
-            </button>
-          )}
+          <div className="submit-slot">
+            {!submitted && (
+              <button className="primary-button" onClick={subjective ? () => updateAnswer({ submitted: true }) : submitObjective}>
+                {subjective ? "查看参考答案" : "提交答案"}
+              </button>
+            )}
+          </div>
         </article>
 
         {submitted && (

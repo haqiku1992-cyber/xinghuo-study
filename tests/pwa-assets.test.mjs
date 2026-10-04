@@ -71,3 +71,14 @@ test("public shell uses a discreet product label", async () => {
   assert.doesNotMatch(page, /星火 · 入党学习/);
   assert.match(layout, /title: "学习记录"/);
 });
+
+test("quiz submit slot preserves space across submitted states", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /<div className="submit-slot">[\s\S]*!submitted[\s\S]*提交答案[\s\S]*<\/div>/);
+  assert.doesNotMatch(page, /submitted[\s\S]{0,120}scrollIntoView|submitted[\s\S]{0,120}scrollTo/);
+  assert.match(css, /\.submit-slot\{min-height:68px;padding-top:19px\}/);
+  assert.match(css, /\.submit-slot \.primary-button\{margin-top:0\}/);
+});
