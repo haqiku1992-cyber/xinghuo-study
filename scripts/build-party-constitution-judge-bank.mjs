@@ -129,7 +129,8 @@ const judges = facts.map(([chapter, article, fact_key, question, answer, correct
   explanation: `${answer === "T" ? "正确" : "错误"}。${correctFact}`,
   source: source(chapter, article),
   tags: [chapterTag(chapter), article, "2022年党章"],
-  updated_at: "2026-10-03"
+  updated_at: "2026-10-03",
+  origin: "generated-from-party-constitution"
 }));
 
 const current = JSON.parse(fs.readFileSync("public/data/questions.json", "utf8"));

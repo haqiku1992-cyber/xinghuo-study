@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildOptionOrder, buildStudyPlan, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, pickPracticeQuestions, recordAttempt, remapAnswerLetter, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
+import { buildOptionOrder, buildStudyPlan, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, normalizeMultipleAnswer, pickPracticeQuestions, recordAttempt, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
 import { collectWrongReview, type WrongReviewSnapshot, wrongReviewLabel } from "./wrong-review";
 
-type QuestionType = "single" | "judge" | "short" | "essay";
+type QuestionType = "single" | "multiple" | "judge" | "short" | "essay";
 type QuestionTopic = "party-constitution" | "party-history" | "demo";
 type PracticeTopic = "all" | Exclude<QuestionTopic, "demo">;
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
@@ -27,6 +27,11 @@ type Question = {
   source: string;
   tags: string[];
   updated_at: string;
+  origin?: "official-original" | "generated-from-party-constitution";
+  origin_collection?: string;
+  origin_question_id?: string;
+  origin_source?: string;
+  origin_type?: "single" | "multiple";
 };
 type Session = {
   id: string;
@@ -50,6 +55,7 @@ const SYNC_KEY = "xinghuo-sync-secret-v1";
 const examDate = new Date("2027-06-01T00:00:00+08:00");
 const typeMeta: Record<QuestionType, { name: string; short: string; icon: string; tone: string }> = {
   single: { name: "单项选择题", short: "单选", icon: "A", tone: "amber" },
+  multiple: { name: "多项选择题", short: "多选", icon: "多", tone: "amber" },
   judge: { name: "判断题", short: "判断", icon: "✓", tone: "green" },
   short: { name: "简答题", short: "简答", icon: "简", tone: "blue" },
   essay: { name: "论述题", short: "论述", icon: "论", tone: "rose" },
@@ -95,6 +101,19 @@ function mergeStores(local: Store, cloudValue: unknown): Store {
   });
 }
 
+function isObjectiveType(type: QuestionType): type is "single" | "multiple" | "judge" {
+  return type === "single" || type === "multiple" || type === "judge";
+}
+
+function originLabel(question: Question) {
+  return question.origin === "official-original" ? "官方原题" : question.origin === "generated-from-party-constitution" ? "补充练习" : "";
+}
+
+function answerLabel(value: string | undefined, type: QuestionType) {
+  if (type === "judge") return value === "T" ? "正确" : value === "F" ? "错误" : value ?? "";
+  if (type === "multiple") return normalizeMultipleAnswer(value ?? "").split("").join("、");
+  return value ?? "";
+}
 function sameDay(a: number, b = Date.now()) {
   return new Date(a).toDateString() === new Date(b).toDateString();
 }
@@ -104,7 +123,7 @@ export default function Home() {
   const [store, setStore] = useState<Store>(emptyStore);
   const [tab, setTab] = useState<Tab>("home");
   const [screen, setScreen] = useState<Screen>("main");
-  const [topicPickerType, setTopicPickerType] = useState<"single" | "judge" | null>(null);
+  const [topicPickerType, setTopicPickerType] = useState<"single" | "multiple" | "judge" | null>(null);
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HistoryItem | null>(null);
   const [wrongReview, setWrongReview] = useState<WrongReviewSnapshot[]>([]);
@@ -300,7 +319,7 @@ export default function Home() {
     if (!picked.length) return flash("这一题型的题目已经全部学会");
     const reviewIds = wrongOnly ? [] : picked.filter((question) => isReviewDue(store.progress[question.id], now)).map((question) => question.id);
     const optionOrders = Object.fromEntries(picked
-      .filter((question) => question.type === "single" && question.options)
+      .filter((question) => (question.type === "single" || question.type === "multiple") && question.options)
       .map((question) => [question.id, buildOptionOrder(question.options?.length ?? 0)]));
     setWrongReview([]);
     setStore((s) => ({
@@ -311,11 +330,17 @@ export default function Home() {
     if (picked.length < 15) flash(`当前题库仅有 ${picked.length} 题，本轮使用全部题目`);
   }
 
-  function openTopicPicker(type: "single" | "judge") {
+  function openTopicPicker(type: "single" | "multiple" | "judge") {
     setTopicPickerType(type);
     setScreen("topic");
   }
 
+  function toggleMultipleOption(letter: string) {
+    if (!current || current.type !== "multiple" || currentAnswer.submitted) return;
+    const selected = normalizeMultipleAnswer(currentAnswer.value, current.options?.length);
+    const next = selected.includes(letter) ? selected.replace(letter, "") : normalizeMultipleAnswer(`${selected}${letter}`, current.options?.length);
+    updateAnswer({ value: next });
+  }
   function updateAnswer(patch: Partial<Answer>) {
     if (!active || !current) return;
     setStore((s) => s.session ? ({
@@ -327,7 +352,9 @@ export default function Home() {
   function submitObjective() {
     if (!current || !currentAnswer.value) return flash("请先选择答案");
     const optionOrder = current.options?.map((_, index) => active?.optionOrders?.[current.id]?.[index] ?? index) ?? [];
-    const correct = currentAnswer.value === remapAnswerLetter(current.answer, optionOrder);
+    const submittedAnswer = current.type === "multiple" ? normalizeMultipleAnswer(currentAnswer.value, current.options?.length) : currentAnswer.value;
+    const expectedAnswer = current.type === "multiple" ? remapMultipleAnswer(current.answer, optionOrder) : current.type === "single" ? remapAnswerLetter(current.answer, optionOrder) : current.answer;
+    const correct = submittedAnswer === expectedAnswer;
     const now = Date.now();
     setStore((s) => {
       const wrong = { ...s.wrong };
@@ -384,10 +411,10 @@ export default function Home() {
 
   function finish() {
     if (!active) return;
-    const isObjective = active.type === "single" || active.type === "judge";
+    const isObjective = isObjectiveType(active.type);
     const answers = Object.values(active.answers).filter((a) => a.submitted);
     const wrongReviewSnapshot = isObjective
-      ? collectWrongReview(active.questionIds, active.answers, active.optionOrders, active.type === "single" ? "single" : "judge")
+      ? collectWrongReview(active.questionIds, active.answers, active.optionOrders, active.type === "multiple" ? "multiple" : active.type === "single" ? "single" : "judge")
       : [];
     const finishedAt = Date.now();
     const item: HistoryItem = {
@@ -445,9 +472,9 @@ export default function Home() {
     const reviewQuestion = questionMap[reviewItem.questionId];
     if (!reviewQuestion) return null;
     const reviewOptionOrder = reviewQuestion.options?.map((_, index) => reviewItem.optionOrder?.[index] ?? index) ?? [];
-    const reviewDisplayedAnswer = remapAnswerLetter(reviewQuestion.answer, reviewOptionOrder);
-    const selectedLabel = reviewQuestion.type === "judge" ? (reviewItem.selectedValue === "T" ? "正确" : "错误") : reviewItem.selectedValue;
-    const correctLabel = reviewQuestion.type === "judge" ? (reviewQuestion.answer === "T" ? "正确" : "错误") : reviewDisplayedAnswer;
+    const reviewDisplayedAnswer = reviewQuestion.type === "multiple" ? remapMultipleAnswer(reviewQuestion.answer, reviewOptionOrder) : remapAnswerLetter(reviewQuestion.answer, reviewOptionOrder);
+    const selectedLabel = answerLabel(reviewItem.selectedValue, reviewQuestion.type);
+    const correctLabel = answerLabel(reviewQuestion.type === "judge" ? reviewQuestion.answer : reviewDisplayedAnswer, reviewQuestion.type);
     return (
       <main className="app-shell quiz-shell">
         <header className="quiz-top">
@@ -456,14 +483,15 @@ export default function Home() {
           <span className="plain-button">只读</span>
         </header>
         <article className="question-card">
-          <div className="question-tags"><span>{typeMeta[reviewQuestion.type].short}</span>{reviewQuestion.tags.map((tag) => <em key={tag}>{tag}</em>)}</div>
+          <div className="question-tags"><span>{typeMeta[reviewQuestion.type].short}</span>{originLabel(reviewQuestion) && <span>{originLabel(reviewQuestion)}</span>}{reviewQuestion.tags.map((tag) => <em key={tag}>{tag}</em>)}</div>
           <h1>{reviewQuestion.question}</h1>
-          {reviewQuestion.type === "single" && (
+          {(reviewQuestion.type === "single" || reviewQuestion.type === "multiple") && (
             <div className="options">
               {reviewOptionOrder.map((originalIndex, index) => {
                 const option = reviewQuestion.options?.[originalIndex] ?? "";
                 const letter = String.fromCharCode(65 + index);
-                const className = letter === reviewDisplayedAnswer ? "correct" : letter === reviewItem.selectedValue ? "wrong-answer" : "";
+                const selected = reviewQuestion.type === "multiple" ? normalizeMultipleAnswer(reviewItem.selectedValue).includes(letter) : letter === reviewItem.selectedValue;
+                const className = letter === reviewDisplayedAnswer ? "correct" : selected ? "wrong-answer" : "";
                 return <button key={`${reviewQuestion.id}-${originalIndex}`} className={className} disabled><b>{letter}</b><span>{option}</span></button>;
               })}
             </div>
@@ -480,7 +508,7 @@ export default function Home() {
           <div className="answer-result bad"><span>你选择：{selectedLabel}</span><span>正确答案：{correctLabel}</span></div>
           <div className="reference">
             <span className="eyebrow">答案解析</span>
-            <p>{reviewQuestion.explanation || "暂无解析"}</p>
+            <p>{reviewQuestion.explanation || (reviewQuestion.origin === "official-original" ? "官方材料未附解析" : "暂无解析")}</p>
             <small>来源：{reviewQuestion.source}</small>
           </div>
         </section>
@@ -496,7 +524,7 @@ export default function Home() {
     const submitted = currentAnswer.submitted;
     const subjective = current.type === "short" || current.type === "essay";
     const optionOrder = current.options?.map((_, index) => active.optionOrders?.[current.id]?.[index] ?? index) ?? [];
-    const displayedAnswer = remapAnswerLetter(current.answer, optionOrder);
+    const displayedAnswer = current.type === "multiple" ? remapMultipleAnswer(current.answer, optionOrder) : remapAnswerLetter(current.answer, optionOrder);
     return (
       <main className="app-shell quiz-shell">
         {notice && <div className="toast">{notice}</div>}
@@ -512,15 +540,16 @@ export default function Home() {
         <div className="progress-track"><i style={{ width: `${((active.index + 1) / active.questionIds.length) * 100}%` }} /></div>
 
         <article className="question-card">
-          <div className="question-tags"><span>{typeMeta[current.type].short}</span>{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((t) => <em key={t}>{t}</em>)}</div>
+          <div className="question-tags"><span>{typeMeta[current.type].short}</span>{originLabel(current) && <span>{originLabel(current)}</span>}{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((t) => <em key={t}>{t}</em>)}</div>
           <h1>{current.question}</h1>
-          {current.type === "single" && (
+          {(current.type === "single" || current.type === "multiple") && (
             <div className="options">
               {optionOrder.map((originalIndex, i) => {
                 const option = current.options?.[originalIndex] ?? "";
                 const letter = String.fromCharCode(65 + i);
-                const cls = submitted ? (letter === displayedAnswer ? "correct" : currentAnswer.value === letter ? "wrong-answer" : "") : currentAnswer.value === letter ? "selected" : "";
-                return <button key={`${current.id}-${originalIndex}`} className={cls} disabled={submitted} onClick={() => updateAnswer({ value: letter })}><b>{letter}</b><span>{option}</span></button>;
+                const selected = current.type === "multiple" ? normalizeMultipleAnswer(currentAnswer.value).includes(letter) : currentAnswer.value === letter;
+                const cls = submitted ? (letter === displayedAnswer ? "correct" : selected ? "wrong-answer" : "") : selected ? "selected" : "";
+                return <button key={`${current.id}-${originalIndex}`} className={cls} disabled={submitted} onClick={() => current.type === "multiple" ? toggleMultipleOption(letter) : updateAnswer({ value: letter })}><b>{letter}</b><span>{option}</span></button>;
               })}
             </div>
           )}
@@ -555,7 +584,7 @@ export default function Home() {
 
         {submitted && (
           <section className="answer-panel">
-            {!subjective && <div className={`answer-result ${currentAnswer.correct ? "ok" : "bad"}`}><b>{currentAnswer.correct ? "回答正确" : "再想一想"}</b><span>正确答案：{current.answer === "T" ? "正确" : current.answer === "F" ? "错误" : displayedAnswer}</span></div>}
+            {!subjective && <div className={`answer-result ${currentAnswer.correct ? "ok" : "bad"}`}><b>{currentAnswer.correct ? "回答正确" : "再想一想"}</b><span>正确答案：{answerLabel(current.type === "judge" ? current.answer : displayedAnswer, current.type)}</span></div>}
             {(!subjective || currentAnswer.rating) && (
               <div className={`mastery-progress ${currentProgress?.masteredAt ? "done" : ""}`}>
                 <b>{currentProgress?.masteredAt ? "已学会" : `掌握进度 ${currentProgress?.correctStreak ?? 0}/${MASTERY_STREAK}`}</b>
@@ -564,7 +593,7 @@ export default function Home() {
             )}
             <div className="reference">
               <span className="eyebrow">{subjective ? "参考答案" : "答案解析"}</span>
-              <p>{subjective ? current.reference_answer : current.explanation}</p>
+              <p>{subjective ? current.reference_answer : current.explanation || (current.origin === "official-original" ? "官方材料未附解析" : "暂无解析")}</p>
               {current.key_points && <><span className="eyebrow">得分要点</span><ul>{current.key_points.map((p) => <li key={p}>{p}</li>)}</ul></>}
               <small>来源：{current.source}</small>
             </div>
@@ -586,7 +615,7 @@ export default function Home() {
   }
 
   if (screen === "report" && report) {
-    const objective = report.type === "single" || report.type === "judge";
+    const objective = isObjectiveType(report.type);
     return (
       <main className="app-shell report-shell">
         <div className="report-mark">✓</div>
@@ -635,8 +664,8 @@ export default function Home() {
                   .filter((topic) => statsFor(type, topic).total > 0)
                   .map((topic) => `${topicMeta[topic].short} ${statsFor(type, topic).total}`)
                   .join(" · ");
-                return <button className={`type-card ${typeMeta[type].tone}`} key={type} onClick={() => type === "single" || type === "judge" ? openTopicPicker(type) : startPractice(type)}>
-                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{typeStats.unmastered} 待学 · {typeStats.mastered} 已学会</small>{type === "single" && topicHint && <small className="topic-hint">{topicHint}</small>}</span><b>›</b>
+                return <button className={`type-card ${typeMeta[type].tone}`} key={type} onClick={() => isObjectiveType(type) ? openTopicPicker(type) : startPractice(type)}>
+                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{typeStats.unmastered} 待学 · {typeStats.mastered} 已学会</small>{(type === "single" || type === "multiple") && topicHint && <small className="topic-hint">{topicHint}</small>}</span><b>›</b>
                 </button>;
               })}
             </div>
@@ -710,7 +739,7 @@ function SectionTitle({ title, side }: { title: string; side?: string }) {
 function PageHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return <header className="page-header"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1></header>;
 }
-function TopicPicker({ type, questions, progress, startPractice, onBack }: { type: "single" | "judge"; questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; onBack: () => void }) {
+function TopicPicker({ type, questions, progress, startPractice, onBack }: { type: "single" | "multiple" | "judge"; questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; onBack: () => void }) {
   const topics: { topic: PracticeTopic; name: string }[] = [
     { topic: "all", name: "全部" },
     { topic: "party-constitution", name: topicMeta["party-constitution"].name },
@@ -729,10 +758,10 @@ function TopicPicker({ type, questions, progress, startPractice, onBack }: { typ
     })}</div>
   </section>;
 }
-function PracticePage({ questions, progress, startPractice, openTopicPicker, active, resume }: { questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; openTopicPicker: (type: "single" | "judge") => void; active: Session | null; resume: () => void }) {
+function PracticePage({ questions, progress, startPractice, openTopicPicker, active, resume }: { questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; openTopicPicker: (type: "single" | "multiple" | "judge") => void; active: Session | null; resume: () => void }) {
   return <section className="subpage"><PageHeader eyebrow="按题型专项练习" title="开始刷题" />
     {active && <button className="continue-card" onClick={resume}><span><small>未完成的练习</small><strong>{typeMeta[active.type].name} · 第 {active.index + 1}/{active.questionIds.length} 题</strong></span><b>继续 ›</b></button>}
-    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => type === "single" || type === "judge" ? openTopicPicker(type) : startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
+    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => isObjectiveType(type) ? openTopicPicker(type) : startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
     <div className="tip-card"><b>练习说明</b><p>每轮优先加入没做过的题；连续答对 5 次后标记为“已学会”，后续常规练习不再出现。答错会重新累计。</p></div>
   </section>;
 }
@@ -752,15 +781,15 @@ function StatsPage({ history, wrongCount }: { history: HistoryItem[]; questions:
     const items = history.filter((h) => h.type === type);
     const count = items.reduce((s, h) => s + h.count, 0);
     if (!count) return 0;
-    return Math.round(items.reduce((s, h) => s + (type === "single" || type === "judge" ? h.correct : h.ratings.mastered), 0) / count * 100);
+    return Math.round(items.reduce((s, h) => s + (isObjectiveType(type) ? h.correct : h.ratings.mastered), 0) / count * 100);
   }
   return <section className="subpage"><PageHeader eyebrow="每一次练习都算数" title="学习统计" />
     <div className="stats-hero"><div><strong>{total}</strong><span>累计完成</span></div><div><strong>{dates.length}</strong><span>学习天数</span></div><div><strong>{wrongCount}</strong><span>错题总数</span></div></div>
     <SectionTitle title="分题型表现" />
-    <div className="rate-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <div key={type}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{type === "single" || type === "judge" ? "正确率" : "掌握率"}</small></span><div><b>{rate(type)}%</b><em><i style={{ width: `${rate(type)}%` }} /></em></div></div>)}</div>
+    <div className="rate-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <div key={type}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{isObjectiveType(type) ? "正确率" : "掌握率"}</small></span><div><b>{rate(type)}%</b><em><i style={{ width: `${rate(type)}%` }} /></em></div></div>)}</div>
     <SectionTitle title="最近练习" />
     {history.length ? <div className="history-list">{[...history].reverse().slice(0, 5).map((h) => {
-      const objective = h.type === "single" || h.type === "judge";
+      const objective = isObjectiveType(h.type);
       const score = objective ? h.correct : h.ratings.mastered;
       const resultRate = h.count ? Math.round(score / h.count * 100) : 0;
       return <div key={h.id}><span><strong>{typeMeta[h.type].name}</strong><small>{new Date(h.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small></span><div className="history-result"><b>{score}/{h.count}</b><small>{resultRate}% {objective ? "正确率" : "掌握率"}</small></div></div>;

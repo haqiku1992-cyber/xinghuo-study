@@ -7,9 +7,11 @@ import {
   formatDuration,
   isRetiredQuestionId,
   MASTERY_STREAK,
+  normalizeMultipleAnswer,
   pickPracticeQuestions,
   recordAttempt,
   remapAnswerLetter,
+  remapMultipleAnswer,
   REVIEW_INTERVAL_DAYS,
   sanitizeRetiredQuestionState,
   type ProgressMap,
@@ -45,6 +47,13 @@ test("single-choice option order is shuffled and the answer letter follows its o
   assert.deepEqual([...order].sort(), [0, 1, 2, 3]);
   assert.notDeepEqual(order, [0, 1, 2, 3]);
   assert.equal(remapAnswerLetter("C", order), String.fromCharCode(65 + order.indexOf(2)));
+});
+
+test("multiple-choice answers normalize canonically and remap with the original option order", () => {
+  assert.equal(normalizeMultipleAnswer("CA"), "AC");
+  assert.equal(normalizeMultipleAnswer("A,C,A", 4), "AC");
+  assert.equal(normalizeMultipleAnswer("AZ", 4), "A");
+  assert.equal(remapMultipleAnswer("AC", [2, 0, 3, 1]), "AB");
 });
 
 test("non-choice answers and missing legacy option orders stay compatible", () => {
@@ -151,6 +160,15 @@ test("round wrong review snapshots only submitted incorrect answers in active or
     { questionId: "q-3", selectedValue: "D", optionOrder: [1, 3, 0, 2] },
   ]);
   assert.notStrictEqual(reviews[0].optionOrder, optionOrders["q-1"]);
+});
+
+test("multiple wrong review preserves selected value and option order", () => {
+  assert.deepEqual(collectWrongReview(
+    ["multiple-1", "multiple-2", "multiple-3"],
+    { "multiple-1": { value: "BA", submitted: true, correct: false }, "multiple-2": { value: "AC", submitted: true, correct: true }, "multiple-3": { value: "D", submitted: true, correct: false } },
+    { "multiple-1": [2, 0, 3, 1], "multiple-3": [0, 1, 2, 3] },
+    "multiple",
+  ), [{ questionId: "multiple-1", selectedValue: "BA", optionOrder: [2, 0, 3, 1] }, { questionId: "multiple-3", selectedValue: "D", optionOrder: [0, 1, 2, 3] }]);
 });
 
 test("judge wrong review preserves the selected value without generating an option order", () => {

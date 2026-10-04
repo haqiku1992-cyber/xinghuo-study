@@ -86,6 +86,22 @@ export function remapAnswerLetter(answer: string | undefined, optionOrder: numbe
   return displayedIndex < 0 ? answer : String.fromCharCode(65 + displayedIndex);
 }
 
+export function normalizeMultipleAnswer(value: string, optionCount?: number) {
+  const maxOptionIndex = Number.isInteger(optionCount) ? Math.min(26, Math.max(0, optionCount ?? 0)) : 26;
+  return [...new Set(String(value ?? '').match(/[A-Z]/g) ?? [])]
+    .filter((letter) => letter.charCodeAt(0) - 64 <= maxOptionIndex)
+    .sort()
+    .join('');
+}
+
+export function remapMultipleAnswer(answer: string | undefined, optionOrder: number[]) {
+  const canonical = normalizeMultipleAnswer(answer ?? '', optionOrder.length);
+  return normalizeMultipleAnswer(canonical.split('').map((letter) => {
+    const displayedIndex = optionOrder.indexOf(letter.charCodeAt(0) - 65);
+    return displayedIndex < 0 ? '' : String.fromCharCode(65 + displayedIndex);
+  }).join(''), optionOrder.length);
+}
+
 export function pickPracticeQuestions<T extends { id: string }>(
   questions: T[],
   progress: ProgressMap,

@@ -13,7 +13,7 @@ test("PWA manifest contains installable app metadata", async () => {
 
 test("question bank remains separate and has unique IDs", async () => {
   const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
-  assert.equal(questions.length, 206);
+  assert.equal(questions.length, 243);
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => question.source && question.updated_at));
 });
@@ -27,7 +27,7 @@ test("retired party-history bank is not present", async () => {
 
 test("service worker cache is bumped for the new question bank", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  assert.match(worker, /xinghuo-study-pwa-v7/);
+  assert.match(worker, /xinghuo-study-pwa-v8/);
 });
 
 test("service worker precaches the essential offline files", async () => {
@@ -102,4 +102,23 @@ test("round wrong review is objective-only, ordered, and read-only", async () =>
   assert.match(reviewScreen, /结束复盘/);
   assert.match(reviewScreen, /setScreen\("report"\)/);
   assert.doesNotMatch(reviewScreen, /recordAttempt|updateAnswer|submitObjective|rateSubjective|setStore/);
+});
+
+test("official multiple-choice bank is present with origin metadata", async () => {
+  const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
+  const official = questions.filter((question) => question.origin === "official-original");
+  assert.equal(official.length, 37);
+  assert.equal(official.filter((question) => question.type === "multiple").length, 17);
+  assert.ok(official.every((question) => question.origin_source?.endsWith("esddz600.pdf") && question.origin_type === question.type));
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /normalizeMultipleAnswer/);
+  assert.match(page, /remapMultipleAnswer/);
+  assert.match(page, /官方原题/);
+});
+
+test("topic picker exposes multiple-choice topics and disables empty party history", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /type: "single" \| "multiple" \| "judge"/);
+  assert.match(page, /disabled=\{!total\}/);
+  assert.match(page, /party-history/);
 });
