@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildOptionOrder, buildStudyPlan, choiceResultState, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, normalizeMultipleAnswer, pickPracticeQuestions, recordAttempt, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
 import { collectWrongReview, type WrongReviewSnapshot, wrongReviewLabel } from "./wrong-review";
 
-type QuestionType = "single" | "multiple" | "judge" | "short" | "essay";
-type QuestionTopic = "party-constitution" | "party-history" | "demo";
+type QuestionType = "single" | "multiple" | "judge" | "fill" | "short" | "essay";
+type QuestionTopic = "party-constitution" | "party-history" | "twentieth-congress" | "demo";
 type PracticeTopic = "all" | Exclude<QuestionTopic, "demo">;
 type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
 type Screen = "main" | "topic" | "quiz" | "report" | "review";
@@ -27,10 +27,16 @@ type Question = {
   source: string;
   tags: string[];
   updated_at: string;
-  origin?: "official-original" | "generated-from-party-constitution";
+  origin?: "official-original" | "official-published" | "generated-from-party-constitution";
   origin_collection?: string;
   origin_question_id?: string;
   origin_source?: string;
+  origin_publisher?: string;
+  origin_title?: string;
+  origin_published_at?: string;
+  origin_canonical_url?: string;
+  origin_collection_url?: string;
+  origin_source_attribution?: string;
   origin_type?: "single" | "multiple";
 };
 type Session = {
@@ -59,10 +65,12 @@ const typeMeta: Record<QuestionType, { name: string; short: string; icon: string
   judge: { name: "判断题", short: "判断", icon: "✓", tone: "green" },
   short: { name: "简答题", short: "简答", icon: "简", tone: "blue" },
   essay: { name: "论述题", short: "论述", icon: "论", tone: "rose" },
+  fill: { name: "填空题", short: "填空", icon: "填", tone: "blue" },
 };
 const topicMeta: Record<Exclude<PracticeTopic, "all">, { name: string; short: string }> = {
   "party-constitution": { name: "党章", short: "党章" },
   "party-history": { name: "党史", short: "党史" },
+  "twentieth-congress": { name: "二十大精神", short: "二十大" },
 };
 const emptyStore: Store = { session: null, wrong: {}, progress: {}, history: [], theme: "light" };
 
@@ -106,7 +114,10 @@ function isObjectiveType(type: QuestionType): type is "single" | "multiple" | "j
 }
 
 function originLabel(question: Question) {
-  return question.origin === "official-original" ? "官方原题" : question.origin === "generated-from-party-constitution" ? "补充练习" : "";
+  if (question.origin === "official-original") return "官方原题";
+  if (question.origin === "official-published") return "官方发布";
+  if (question.origin === "generated-from-party-constitution") return "补充练习";
+  return "";
 }
 
 function answerLabel(value: string | undefined, type: QuestionType) {
@@ -123,7 +134,7 @@ export default function Home() {
   const [store, setStore] = useState<Store>(emptyStore);
   const [tab, setTab] = useState<Tab>("home");
   const [screen, setScreen] = useState<Screen>("main");
-  const [topicPickerType, setTopicPickerType] = useState<"single" | "multiple" | "judge" | null>(null);
+  const [topicPickerType, setTopicPickerType] = useState<"single" | "multiple" | "judge" | "fill" | null>(null);
   const [ready, setReady] = useState(false);
   const [report, setReport] = useState<HistoryItem | null>(null);
   const [wrongReview, setWrongReview] = useState<WrongReviewSnapshot[]>([]);
@@ -330,7 +341,7 @@ export default function Home() {
     if (picked.length < 15) flash(`当前题库仅有 ${picked.length} 题，本轮使用全部题目`);
   }
 
-  function openTopicPicker(type: "single" | "multiple" | "judge") {
+  function openTopicPicker(type: "single" | "multiple" | "judge" | "fill") {
     setTopicPickerType(type);
     setScreen("topic");
   }
@@ -521,7 +532,7 @@ export default function Home() {
 
   if (screen === "quiz" && active && current) {
     const submitted = currentAnswer.submitted;
-    const subjective = current.type === "short" || current.type === "essay";
+    const subjective = current.type === "fill" || current.type === "short" || current.type === "essay";
     const optionOrder = current.options?.map((_, index) => active.optionOrders?.[current.id]?.[index] ?? index) ?? [];
     const displayedAnswer = current.type === "multiple" ? remapMultipleAnswer(current.answer, optionOrder) : remapAnswerLetter(current.answer, optionOrder);
     return (
@@ -558,7 +569,15 @@ export default function Home() {
               ))}
             </div>
           )}
-          {subjective && (
+          {subjective && (current.type === "fill" ? (
+            <input
+              className="fill-input"
+              placeholder="先填下你的答案，再查看官方答案…"
+              value={currentAnswer.value}
+              disabled={submitted}
+              onChange={(e) => updateAnswer({ value: e.target.value })}
+            />
+          ) : (
             <textarea
               className={current.type === "essay" ? "essay-input" : ""}
               placeholder={current.type === "essay" ? "按“观点—依据—结合实际—总结”的思路写下你的回答…" : "先写下你的答案，再查看参考内容…"}
@@ -566,7 +585,7 @@ export default function Home() {
               disabled={submitted}
               onChange={(e) => updateAnswer({ value: e.target.value })}
             />
-          )}
+          ))}
           <div className="submit-slot">
             <button
               className={`primary-button${submitted ? " submit-placeholder" : ""}`}
@@ -590,7 +609,7 @@ export default function Home() {
               </div>
             )}
             <div className="reference">
-              <span className="eyebrow">{subjective ? "参考答案" : "答案解析"}</span>
+              <span className="eyebrow">{subjective ? (current.type === "fill" ? "官方答案" : "参考答案") : "答案解析"}</span>
               <p>{subjective ? current.reference_answer : current.explanation || (current.origin === "official-original" ? "官方材料未附解析" : "暂无解析")}</p>
               {current.key_points && <><span className="eyebrow">得分要点</span><ul>{current.key_points.map((p) => <li key={p}>{p}</li>)}</ul></>}
               <small>来源：{current.source}</small>
@@ -658,12 +677,12 @@ export default function Home() {
             <div className="type-grid">
               {(Object.keys(typeMeta) as QuestionType[]).map((type) => {
                 const typeStats = statsFor(type);
-                const topicHint = (["party-constitution", "party-history"] as const)
+                const topicHint = (["party-constitution", "party-history", "twentieth-congress"] as const)
                   .filter((topic) => statsFor(type, topic).total > 0)
                   .map((topic) => `${topicMeta[topic].short} ${statsFor(type, topic).total}`)
                   .join(" · ");
-                return <button className={`type-card ${typeMeta[type].tone}`} key={type} onClick={() => isObjectiveType(type) ? openTopicPicker(type) : startPractice(type)}>
-                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{typeStats.unmastered} 待学 · {typeStats.mastered} 已学会</small>{(type === "single" || type === "multiple") && topicHint && <small className="topic-hint">{topicHint}</small>}</span><b>›</b>
+                return <button className={`type-card ${typeMeta[type].tone}`} key={type} onClick={() => isObjectiveType(type) || type === "fill" ? openTopicPicker(type) : startPractice(type)}>
+                  <i>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{typeStats.unmastered} 待学 · {typeStats.mastered} 已学会</small>{(type === "single" || type === "multiple" || type === "fill") && topicHint && <small className="topic-hint">{topicHint}</small>}</span><b>›</b>
                 </button>;
               })}
             </div>
@@ -737,11 +756,12 @@ function SectionTitle({ title, side }: { title: string; side?: string }) {
 function PageHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return <header className="page-header"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1></header>;
 }
-function TopicPicker({ type, questions, progress, startPractice, onBack }: { type: "single" | "multiple" | "judge"; questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; onBack: () => void }) {
+function TopicPicker({ type, questions, progress, startPractice, onBack }: { type: "single" | "multiple" | "judge" | "fill"; questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; onBack: () => void }) {
   const topics: { topic: PracticeTopic; name: string }[] = [
     { topic: "all", name: "全部" },
     { topic: "party-constitution", name: topicMeta["party-constitution"].name },
     { topic: "party-history", name: topicMeta["party-history"].name },
+    { topic: "twentieth-congress", name: topicMeta["twentieth-congress"].name },
   ];
   return <section className="subpage topic-picker">
     <button className="subpage-back" onClick={onBack}>‹ 返回</button>
@@ -756,10 +776,10 @@ function TopicPicker({ type, questions, progress, startPractice, onBack }: { typ
     })}</div>
   </section>;
 }
-function PracticePage({ questions, progress, startPractice, openTopicPicker, active, resume }: { questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; openTopicPicker: (type: "single" | "multiple" | "judge") => void; active: Session | null; resume: () => void }) {
+function PracticePage({ questions, progress, startPractice, openTopicPicker, active, resume }: { questions: Question[]; progress: ProgressMap; startPractice: (type: QuestionType, options?: PracticeOptions) => void; openTopicPicker: (type: "single" | "multiple" | "judge" | "fill") => void; active: Session | null; resume: () => void }) {
   return <section className="subpage"><PageHeader eyebrow="按题型专项练习" title="开始刷题" />
     {active && <button className="continue-card" onClick={resume}><span><small>未完成的练习</small><strong>{typeMeta[active.type].name} · 第 {active.index + 1}/{active.questionIds.length} 题</strong></span><b>继续 ›</b></button>}
-    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => isObjectiveType(type) ? openTopicPicker(type) : startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
+    <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => isObjectiveType(type) || type === "fill" ? openTopicPicker(type) : startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
     <div className="tip-card"><b>练习说明</b><p>每轮优先加入没做过的题；连续答对 5 次后标记为“已学会”，后续常规练习不再出现。答错会重新累计。</p></div>
   </section>;
 }

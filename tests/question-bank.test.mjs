@@ -6,6 +6,7 @@ import test from "node:test";
 import { auditQuestionBank } from "../scripts/audit-question-bank.mjs";
 import { replaceQuestionsByPrefix } from "../scripts/question-bank-utils.mjs";
 import { buildOfficialQuestions, validateRawSnapshot } from "../scripts/import-official-party-constitution-test.mjs";
+import { buildOfficialQuestions as buildOfficialFillQuestions, validateRawSnapshot as validateOfficialFillRaw } from "../scripts/import-official-twentieth-congress-bank.mjs";
 
 const questions = JSON.parse(await readFile(new URL("../public/data/questions.json", import.meta.url), "utf8"));
 const qualityFixSingleExpectations = new Map([
@@ -61,8 +62,8 @@ const replacedWeakJudgeQuestions = new Set([
 ]);
 
 test("question bank matches the current topic contract", () => {
-  const validTypes = new Set(["single", "multiple", "judge", "short", "essay"]);
-  const validTopics = new Set(["party-constitution", "party-history", "demo"]);
+  const validTypes = new Set(["single", "multiple", "judge", "fill", "short", "essay"]);
+  const validTopics = new Set(["party-constitution", "party-history", "twentieth-congress", "demo"]);
   const byType = (type) => questions.filter((question) => question.type === type);
   const constitution = questions.filter((question) => question.type === "single" && question.topic === "party-constitution" && question.origin === "generated-from-party-constitution");
   const constitutionJudges = questions.filter((question) => question.type === "judge" && question.topic === "party-constitution");
@@ -72,14 +73,15 @@ test("question bank matches the current topic contract", () => {
   const single034 = questions.find((question) => question.id === "party-constitution-single-034");
   const single062 = questions.find((question) => question.id === "party-constitution-single-062");
 
-  assert.equal(questions.length, 243);
+  assert.equal(questions.length, 343);
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => validTypes.has(question.type)));
   assert.ok(questions.every((question) => validTopics.has(question.topic)));
-  assert.deepEqual(Object.fromEntries(["single", "multiple", "judge", "short", "essay"].map((type) => [type, byType(type).length])), {
+  assert.deepEqual(Object.fromEntries(["single", "multiple", "judge", "fill", "short", "essay"].map((type) => [type, byType(type).length])), {
     single: 120,
     multiple: 17,
     judge: 100,
+    fill: 100,
     short: 3,
     essay: 3,
   });
@@ -90,6 +92,10 @@ test("question bank matches the current topic contract", () => {
   assert.equal(constitutionJudges.length, 100);
   const official = questions.filter((question) => question.origin === "official-original");
   assert.equal(official.length, 37);
+  const officialPublished = questions.filter((question) => question.origin === "official-published");
+  assert.equal(officialPublished.length, 100);
+  assert.ok(officialPublished.every((question) => question.type === "fill" && question.topic === "twentieth-congress" && question.reference_answer && !Object.hasOwn(question, "answer") && !Object.hasOwn(question, "explanation")));
+  assert.deepEqual([officialPublished[0].id, officialPublished.at(-1).id], ["official-12371-20th-fill-001", "official-12371-20th-fill-100"]);
   assert.equal(official.filter((question) => question.type === "single").length, 20);
   assert.equal(official.filter((question) => question.type === "multiple").length, 17);
   assert.equal(questions.filter((question) => question.type === "multiple" && question.topic === "party-constitution").length, 17);
@@ -165,7 +171,9 @@ test("third-blade quality fixes preserve identities and replace weak wording", (
 test("question bank audit has no knowledge-point or normalized-question collisions", () => {
   const report = auditQuestionBank(questions);
   assert.deepEqual(report.errors, []);
-  assert.equal(report.total, 243);
+  assert.equal(report.total, 343);
+  assert.equal(report.fillCount, 100);
+  assert.equal(report.officialPublishedCount, 100);
   assert.equal(report.officialTotal, 37);
   assert.equal(report.officialSingleCount, 20);
   assert.equal(report.officialMultipleCount, 17);
@@ -263,4 +271,32 @@ test("official snapshot validates and produces canonical origin identities", asy
   assert.equal(questions.filter((question) => question.type === "multiple" && question.topic === "party-constitution").length, 17);
   assert.equal(questions.filter((question) => question.type === "multiple" && question.topic === "party-history").length, 0);
   assert.ok(official.every((question) => !Object.hasOwn(question, "explanation")));
+});
+
+
+test("official published 100-question raw snapshot is canonical and stable", async () => {
+  const raw = JSON.parse(await readFile(new URL("../data/official/12371-twentieth-congress-100.json", import.meta.url), "utf8"));
+  const snapshot = validateOfficialFillRaw(raw);
+  assert.equal(snapshot.length, 100);
+  assert.deepEqual(Object.fromEntries(Array.from({ length: 20 }, (_, index) => [index + 1, snapshot.filter((item) => item.part === index + 1).length])), Object.fromEntries(Array.from({ length: 20 }, (_, index) => [index + 1, 5])));
+  assert.deepEqual([snapshot[0].global_number, snapshot.at(-1).global_number], [1, 100]);
+  const built = buildOfficialFillQuestions(raw);
+  assert.equal(built.length, 100);
+  assert.ok(built.every((question) => question.origin === "official-published" && question.origin_publisher === "共产党员网" && question.origin_source_attribution === "中国组织人事报" && question.origin_canonical_url.startsWith("https://www.12371.cn/")));
+});
+
+test("fill questions use the subjective answer-reference path", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /current\.type === "fill"[\s\S]*先填下你的答案，再查看官方答案/);
+  assert.match(page, /current\.type === "fill" \? "官方答案"/);
+  const submitStart = page.indexOf("function submitObjective");
+  const submitEnd = page.indexOf("function finish", submitStart);
+  assert.doesNotMatch(page.slice(submitStart, submitEnd), /fill/);
+});
+
+test("fill is available in the topic picker while empty topics stay disabled", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /type: "single" \| "multiple" \| "judge" \| "fill"/);
+  assert.match(page, /twentieth-congress/);
+  assert.match(page, /disabled={!total}/);
 });
