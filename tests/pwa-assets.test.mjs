@@ -83,7 +83,7 @@ test("quiz submit slot preserves space across submitted states", async () => {
   assert.match(page, /disabled=\{submitted\}/);
   assert.match(page, /aria-hidden=\{submitted \? true : undefined\}/);
   assert.match(page, /tabIndex=\{submitted \? -1 : undefined\}/);
-  assert.match(page, /subjective \? "查看参考答案" : "提交答案"/);
+  assert.match(page, /\{current\.type === "fill"\s*\?\s*"查看官方答案"\s*:\s*subjective\s*\?\s*"查看参考答案"\s*:\s*"提交答案"\}/);
   assert.doesNotMatch(page, /submitted[\s\S]{0,120}scrollIntoView|submitted[\s\S]{0,120}scrollTo/);
   assert.doesNotMatch(css, /\.submit-slot\{[^}]*min-height/);
   assert.match(css, /\.submit-slot\{padding-top:19px\}/);

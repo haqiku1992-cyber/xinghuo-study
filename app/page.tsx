@@ -594,7 +594,11 @@ export default function Home() {
               tabIndex={submitted ? -1 : undefined}
               onClick={subjective ? () => updateAnswer({ submitted: true }) : submitObjective}
             >
-                {subjective ? "查看参考答案" : "提交答案"}
+                {current.type === "fill"
+                  ? "查看官方答案"
+                  : subjective
+                    ? "查看参考答案"
+                    : "提交答案"}
             </button>
           </div>
         </article>
