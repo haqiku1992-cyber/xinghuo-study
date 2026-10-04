@@ -494,7 +494,7 @@ export default function Home() {
           <span className="plain-button">只读</span>
         </header>
         <article className="question-card">
-          <div className="question-tags"><span>{typeMeta[reviewQuestion.type].short}</span>{originLabel(reviewQuestion) && <span>{originLabel(reviewQuestion)}</span>}{reviewQuestion.tags.map((tag) => <em key={tag}>{tag}</em>)}</div>
+          <div className="question-tags"><span>{typeMeta[reviewQuestion.type].short}</span>{originLabel(reviewQuestion) && <span>{originLabel(reviewQuestion)}</span>}{reviewQuestion.tags.map((tag, index) => <em key={`${reviewQuestion.id}-tag-${index}`}>{tag}</em>)}</div>
           <h1>{reviewQuestion.question}</h1>
           {(reviewQuestion.type === "single" || reviewQuestion.type === "multiple") && (
             <div className="options">
@@ -550,7 +550,7 @@ export default function Home() {
         <div className="progress-track"><i style={{ width: `${((active.index + 1) / active.questionIds.length) * 100}%` }} /></div>
 
         <article className="question-card">
-          <div className="question-tags"><span>{typeMeta[current.type].short}</span>{originLabel(current) && <span>{originLabel(current)}</span>}{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((t) => <em key={t}>{t}</em>)}</div>
+          <div className="question-tags"><span>{typeMeta[current.type].short}</span>{originLabel(current) && <span>{originLabel(current)}</span>}{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((tag, index) => <em key={`${current.id}-tag-${index}`}>{tag}</em>)}</div>
           <h1>{current.question}</h1>
           {(current.type === "single" || current.type === "multiple") && (
             <div className="options">

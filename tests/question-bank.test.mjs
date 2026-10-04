@@ -77,6 +77,7 @@ test("question bank matches the current topic contract", () => {
   assert.equal(new Set(questions.map((question) => question.id)).size, questions.length);
   assert.ok(questions.every((question) => validTypes.has(question.type)));
   assert.ok(questions.every((question) => validTopics.has(question.topic)));
+  assert.ok(questions.every((question) => Array.isArray(question.tags) && question.tags.length > 0 && question.tags.every((tag) => typeof tag === "string" && tag.length > 0) && new Set(question.tags).size === question.tags.length));
   assert.deepEqual(Object.fromEntries(["single", "multiple", "judge", "fill", "short", "essay"].map((type) => [type, byType(type).length])), {
     single: 120,
     multiple: 17,
@@ -110,6 +111,8 @@ test("question bank matches the current topic contract", () => {
   assert.notEqual(judge073.fact_key, single062.fact_key);
   assert.equal(questions.some((question) => question.question === "党员享有参加党的有关会议、阅读党的有关文件、接受党的教育和培训的权利。"), false);
   assert.equal(questions.some((question) => question.question === "省、自治区、直辖市，设区的市和自治州，以及县级相应地区的党的代表大会每五年举行一次。"), false);
+  assert.deepEqual(questions.find((question) => question.id === "party-constitution-single-001").tags, ["总纲", "2022年党章"]);
+  assert.deepEqual(questions.find((question) => question.id === "party-constitution-single-074").tags, ["党的干部", "第三十六条", "2022年党章"]);
   assert.deepEqual([questions.find((question) => question.id === "party-constitution-judge-051").tags[0], questions.find((question) => question.id === "party-constitution-judge-051").tags[1]], ["党的中央组织", "第二十一条"]);
   assert.deepEqual([questions.find((question) => question.id === "party-constitution-judge-064").tags[0], questions.find((question) => question.id === "party-constitution-judge-064").tags[1]], ["党的中央组织", "第二十二条"]);
   assert.equal(history.length, 0);

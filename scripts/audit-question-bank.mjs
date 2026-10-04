@@ -130,7 +130,8 @@ export function auditQuestionBank(questions) {
     }
 
     if (isGeneratedFormal(question)) {
-      const [chapter, article] = question.tags ?? [];
+      const [chapter, taggedArticle] = question.tags ?? [];
+      const article = chapter === "总纲" ? "总纲" : taggedArticle;
       const articleNumber = parseArticleNumber(article);
       const range = CHAPTER_ARTICLE_RANGES[chapter];
       const validChapterArticle = chapter === "总纲"

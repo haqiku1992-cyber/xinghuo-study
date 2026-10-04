@@ -4,6 +4,9 @@ import { replaceQuestionsByPrefix } from "./question-bank-utils.mjs";
 const sourceUrl = "https://www.cac.gov.cn/2022-10/26/c_1668411101170612.htm";
 const source = (chapter, article) => `《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· ${chapter}${article === "总纲" ? "" : ` · ${article}`} · ${sourceUrl}`;
 const chapterTag = (chapter) => chapter === "总纲" ? "总纲" : chapter.replace(/^第.+章\s*/, "");
+function uniqueTags(...tags) {
+  return [...new Set(tags.filter(Boolean))];
+}
 
 const facts = [
   ["总纲", "总纲", "party-constitution:general-program:party-nature", "中国共产党是中国工人阶级的先锋队，同时是中国人民和中华民族的先锋队。", "T", "党章总纲明确，中国共产党同时具有这两个先锋队性质。"],
@@ -128,7 +131,7 @@ const judges = facts.map(([chapter, article, fact_key, question, answer, correct
   answer,
   explanation: `${answer === "T" ? "正确" : "错误"}。${correctFact}`,
   source: source(chapter, article),
-  tags: [chapterTag(chapter), article, "2022年党章"],
+  tags: uniqueTags(chapterTag(chapter), article, "2022年党章"),
   updated_at: "2026-10-03",
   origin: "generated-from-party-constitution"
 }));

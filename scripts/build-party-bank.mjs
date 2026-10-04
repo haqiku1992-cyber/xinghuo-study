@@ -213,6 +213,9 @@ const letters = ["A", "B", "C", "D"];
 const explanationOverrides = new Map([
   ["party-constitution:general-program:basic-task", "依据现行《中国共产党章程》总纲，正确答案是“进一步解放生产力、发展生产力，逐步实现社会主义现代化”。党章同时明确，要为此改革生产关系和上层建筑中不适应生产力发展的方面和环节。"]
 ]);
+function uniqueTags(...tags) {
+  return [...new Set(tags.filter(Boolean))];
+}
 const singles = facts.map(([chapter, article, question, correct, ...wrong], index) => {
   const answerIndex = index % 4;
   const options = [...wrong];
@@ -225,7 +228,7 @@ const singles = facts.map(([chapter, article, question, correct, ...wrong], inde
     answer: letters[answerIndex],
     explanation: explanationOverrides.get(factKeys[index]) ?? `依据现行《中国共产党章程》${chapter}${article === chapter ? "" : ` ${article}`}，正确答案是“${correct}”。`,
     source: `《中国共产党章程》（中国共产党第二十次全国代表大会部分修改，2022年10月22日通过）· ${chapter}${article === chapter ? "" : ` · ${article}`} · ${sourceUrl}`,
-    tags: [chapter.replace(/^第.+章\s*/, ""), article, "2022年党章"],
+    tags: uniqueTags(chapter.replace(/^第.+章\s*/, ""), article, "2022年党章"),
     updated_at: "2026-07-30",
     origin: "generated-from-party-constitution",
     topic: "party-constitution",
