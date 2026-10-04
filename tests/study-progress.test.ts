@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildOptionOrder,
   buildStudyPlan,
+  choiceResultState,
   formatDuration,
   isRetiredQuestionId,
   MASTERY_STREAK,
@@ -47,6 +48,13 @@ test("single-choice option order is shuffled and the answer letter follows its o
   assert.deepEqual([...order].sort(), [0, 1, 2, 3]);
   assert.notDeepEqual(order, [0, 1, 2, 3]);
   assert.equal(remapAnswerLetter("C", order), String.fromCharCode(65 + order.indexOf(2)));
+});
+
+test("multiple-choice result coloring marks every correct option and only extra selections wrong", () => {
+  const state = (selectedAnswer: string, letter: string) => choiceResultState({ type: "multiple", letter, displayedAnswer: "AC", selectedAnswer, submitted: true });
+  assert.deepEqual(["A", "B", "C", "D"].map((letter) => state("AD", letter)), ["correct", "", "correct", "wrong-answer"]);
+  assert.deepEqual(["A", "B", "C", "D"].map((letter) => state("AC", letter)), ["correct", "", "correct", ""]);
+  assert.equal(choiceResultState({ type: "multiple", letter: "A", displayedAnswer: "AC", selectedAnswer: "", submitted: false }), "");
 });
 
 test("multiple-choice answers normalize canonically and remap with the original option order", () => {

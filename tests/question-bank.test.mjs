@@ -244,6 +244,13 @@ test("retired party-history builder is absent", () => {
   assert.equal(existsSync(new URL("../scripts/build-party-history-bank.mjs", import.meta.url)), false);
 });
 
+test("official raw snapshot rejects multi-letter single answers", async () => {
+  const raw = JSON.parse(await readFile(new URL("../data/official/12371-esddz-knowledge-test-37.json", import.meta.url), "utf8"));
+  const invalid = JSON.parse(JSON.stringify(raw));
+  invalid.questions[0].answer = "AB";
+  assert.throws(() => validateRawSnapshot(invalid), /answer cardinality mismatch: single-1/);
+});
+
 test("official snapshot validates and produces canonical origin identities", async () => {
   const raw = JSON.parse(await readFile(new URL("../data/official/12371-esddz-knowledge-test-37.json", import.meta.url), "utf8"));
   assert.equal(validateRawSnapshot(raw).length, 37);

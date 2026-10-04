@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildOptionOrder, buildStudyPlan, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, normalizeMultipleAnswer, pickPracticeQuestions, recordAttempt, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
+import { buildOptionOrder, buildStudyPlan, choiceResultState, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, normalizeMultipleAnswer, pickPracticeQuestions, recordAttempt, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
 import { collectWrongReview, type WrongReviewSnapshot, wrongReviewLabel } from "./wrong-review";
 
 type QuestionType = "single" | "multiple" | "judge" | "short" | "essay";
@@ -490,8 +490,7 @@ export default function Home() {
               {reviewOptionOrder.map((originalIndex, index) => {
                 const option = reviewQuestion.options?.[originalIndex] ?? "";
                 const letter = String.fromCharCode(65 + index);
-                const selected = reviewQuestion.type === "multiple" ? normalizeMultipleAnswer(reviewItem.selectedValue).includes(letter) : letter === reviewItem.selectedValue;
-                const className = letter === reviewDisplayedAnswer ? "correct" : selected ? "wrong-answer" : "";
+                const className = choiceResultState({ type: reviewQuestion.type, letter, displayedAnswer: reviewDisplayedAnswer ?? "", selectedAnswer: reviewItem.selectedValue, submitted: true });
                 return <button key={`${reviewQuestion.id}-${originalIndex}`} className={className} disabled><b>{letter}</b><span>{option}</span></button>;
               })}
             </div>
@@ -547,8 +546,7 @@ export default function Home() {
               {optionOrder.map((originalIndex, i) => {
                 const option = current.options?.[originalIndex] ?? "";
                 const letter = String.fromCharCode(65 + i);
-                const selected = current.type === "multiple" ? normalizeMultipleAnswer(currentAnswer.value).includes(letter) : currentAnswer.value === letter;
-                const cls = submitted ? (letter === displayedAnswer ? "correct" : selected ? "wrong-answer" : "") : selected ? "selected" : "";
+                const cls = choiceResultState({ type: current.type, letter, displayedAnswer: displayedAnswer ?? "", selectedAnswer: currentAnswer.value, submitted: Boolean(submitted) });
                 return <button key={`${current.id}-${originalIndex}`} className={cls} disabled={submitted} onClick={() => current.type === "multiple" ? toggleMultipleOption(letter) : updateAnswer({ value: letter })}><b>{letter}</b><span>{option}</span></button>;
               })}
             </div>

@@ -102,6 +102,15 @@ export function remapMultipleAnswer(answer: string | undefined, optionOrder: num
   }).join(''), optionOrder.length);
 }
 
+export type ChoiceResultType = "single" | "multiple";
+
+export function choiceResultState({ type, letter, displayedAnswer, selectedAnswer, submitted }: { type: ChoiceResultType; letter: string; displayedAnswer: string; selectedAnswer: string; submitted: boolean }) {
+  const correctOption = type === "multiple" ? normalizeMultipleAnswer(displayedAnswer).includes(letter) : letter === displayedAnswer;
+  const selected = type === "multiple" ? normalizeMultipleAnswer(selectedAnswer).includes(letter) : selectedAnswer === letter;
+  if (!submitted) return selected ? "selected" : "";
+  return correctOption ? "correct" : selected ? "wrong-answer" : "";
+}
+
 export function pickPracticeQuestions<T extends { id: string }>(
   questions: T[],
   progress: ProgressMap,

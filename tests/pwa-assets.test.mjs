@@ -113,6 +113,7 @@ test("official multiple-choice bank is present with origin metadata", async () =
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /normalizeMultipleAnswer/);
   assert.match(page, /remapMultipleAnswer/);
+  assert.equal((page.match(/choiceResultState\(/g) ?? []).length, 2);
   assert.match(page, /官方原题/);
 });
 

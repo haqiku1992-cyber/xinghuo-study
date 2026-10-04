@@ -33,8 +33,11 @@ export function validateRawSnapshot(raw) {
     assert.equal(new Set(item.options).size, item.options.length, `duplicate options: ${item.section}-${item.number}`);
     assert.ok(typeof item.answer === "string" && item.answer.length > 0, `empty answer: ${item.section}-${item.number}`);
     assert.equal(item.answer, [...new Set(item.answer)].sort().join(""), `answer must be canonical: ${item.section}-${item.number}`);
-    const expectedAnswerLength = item.section === "single" ? 1 : 2;
-    assert.equal(item.answer.length >= expectedAnswerLength, true, `answer cardinality mismatch: ${item.section}-${item.number}`);
+    if (item.section === "single") {
+      assert.equal(item.answer.length, 1, `answer cardinality mismatch: ${item.section}-${item.number}`);
+    } else {
+      assert.equal(item.answer.length >= 2, true, `answer cardinality mismatch: ${item.section}-${item.number}`);
+    }
     for (const letter of item.answer) {
       assert.ok(isLetter(letter), `invalid answer letter: ${item.section}-${item.number}`);
       assert.ok(letter.charCodeAt(0) - 65 < item.options.length, `answer exceeds option count: ${item.section}-${item.number}`);
