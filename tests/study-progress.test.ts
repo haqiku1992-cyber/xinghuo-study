@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildOptionOrder,
   buildStudyPlan,
+  canSkipAnswer,
   choiceResultState,
   formatDuration,
   isRetiredQuestionId,
@@ -11,6 +12,7 @@ import {
   normalizeMultipleAnswer,
   pickPracticeQuestions,
   practiceQuestionWeight,
+  mergeQuestionProgress,
   progressUpdatedAt,
   recordAttempt,
   recordSkip,
@@ -153,6 +155,76 @@ test("skip updates only persistent skip metadata and leaves attempts untouched",
   assert.equal(skippedAgain.masteryCorrects, 1);
   assert.equal(skippedAgain.skipCount, 2);
   assert.equal(progressUpdatedAt(skippedAgain), 2345);
+});
+
+test("a skipped answer cannot be skipped again", () => {
+  assert.equal(canSkipAnswer({ value: "", skipped: true }), false);
+  assert.equal(canSkipAnswer({ value: "", submitted: true }), false);
+  assert.equal(canSkipAnswer({ value: "" }), true);
+});
+
+test("progress merge keeps newer answer state and merges newer skip metadata", () => {
+  const remoteMastered: QuestionProgress = {
+    attempts: 3,
+    correctStreak: 3,
+    correctAttempts: 3,
+    masteryCorrects: 3,
+    masteredAt: 200,
+    reviewStep: 1,
+    nextReviewAt: 300,
+    lastAttempt: 200,
+    skipCount: 1,
+    lastSkipped: 150,
+  };
+  const localOlderWithLaterSkip: QuestionProgress = {
+    attempts: 1,
+    correctStreak: 0,
+    correctAttempts: 0,
+    masteryCorrects: 0,
+    lastAttempt: 100,
+    skipCount: 2,
+    lastSkipped: 300,
+  };
+  const mergedA = mergeQuestionProgress(localOlderWithLaterSkip, remoteMastered);
+  assert.equal(mergedA?.masteredAt, 200);
+  assert.equal(mergedA?.masteryCorrects, 3);
+  assert.equal(mergedA?.attempts, 3);
+  assert.equal(mergedA?.reviewStep, 1);
+  assert.equal(mergedA?.skipCount, 2);
+  assert.equal(mergedA?.lastSkipped, 300);
+
+  const localNewerAnswer: QuestionProgress = {
+    attempts: 4,
+    correctStreak: 1,
+    correctAttempts: 4,
+    masteryCorrects: 1,
+    lastAttempt: 500,
+    skipCount: 1,
+    lastSkipped: 400,
+  };
+  const remoteNewerSkip: QuestionProgress = {
+    attempts: 2,
+    correctStreak: 2,
+    correctAttempts: 2,
+    masteryCorrects: 2,
+    masteredAt: 250,
+    reviewStep: 0,
+    lastAttempt: 250,
+    skipCount: 3,
+    lastSkipped: 600,
+  };
+  const mergedB = mergeQuestionProgress(localNewerAnswer, remoteNewerSkip);
+  assert.equal(mergedB?.attempts, 4);
+  assert.equal(mergedB?.masteryCorrects, 1);
+  assert.equal(mergedB?.masteredAt, undefined);
+  assert.equal(mergedB?.skipCount, 3);
+  assert.equal(mergedB?.lastSkipped, 600);
+
+  const current = { ...localNewerAnswer, skipCount: 5, lastSkipped: 700 };
+  const oldSnapshot = { ...remoteNewerSkip, skipCount: 2, lastSkipped: 200 };
+  const mergedC = mergeQuestionProgress(current, oldSnapshot);
+  assert.equal(mergedC?.skipCount, 5);
+  assert.equal(mergedC?.lastSkipped, 700);
 });
 
 test("skip penalty lowers weight without reaching zero and applies to due reviews", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildOptionOrder, buildStudyPlan, choiceResultState, formatDuration, getNextReviewAt, isReviewDue, MASTERY_CORRECTS, normalizeMultipleAnswer, pickPracticeQuestions, progressUpdatedAt, recordAttempt, recordSkip, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap, type QuestionProgress } from "./study-progress";
+import { buildOptionOrder, buildStudyPlan, canSkipAnswer, choiceResultState, formatDuration, getNextReviewAt, isReviewDue, MASTERY_CORRECTS, mergeQuestionProgress, normalizeMultipleAnswer, pickPracticeQuestions, recordAttempt, recordSkip, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap, type QuestionProgress } from "./study-progress";
 import { collectWrongReview, type WrongReviewSnapshot, wrongReviewLabel } from "./wrong-review";
 
 type QuestionType = "single" | "multiple" | "judge" | "fill" | "short" | "essay";
@@ -95,7 +95,7 @@ function mergeStores(local: Store, cloudValue: unknown): Store {
   const progress: ProgressMap = { ...cloud.progress };
   for (const [id, record] of Object.entries(local.progress)) {
     const remote = progress[id];
-    if (!remote || progressUpdatedAt(record) >= progressUpdatedAt(remote)) progress[id] = record;
+    progress[id] = mergeQuestionProgress(record, remote) ?? record;
   }
   const session = !cloud.session || (local.session && local.session.startedAt >= cloud.session.startedAt)
     ? local.session
@@ -375,18 +375,21 @@ export default function Home() {
   }
 
   function skipCurrent() {
-    if (!active || !current || currentAnswer.submitted) return;
+    if (!active || !current || !canSkipAnswer(currentAnswer)) return;
     const now = Date.now();
     const isLast = active.index === active.questionIds.length - 1;
-    setStore((s) => s.session ? ({
-      ...s,
-      progress: { ...s.progress, [current.id]: recordSkip(s.progress[current.id], now) },
-      session: {
-        ...s.session,
-        index: isLast ? s.session.index : s.session.index + 1,
-        answers: { ...s.session.answers, [current.id]: { ...currentAnswer, skipped: true } },
-      },
-    }) : s);
+    setStore((s) => {
+      if (!s.session || !canSkipAnswer(s.session.answers[current.id])) return s;
+      return {
+        ...s,
+        progress: { ...s.progress, [current.id]: recordSkip(s.progress[current.id], now) },
+        session: {
+          ...s.session,
+          index: isLast ? s.session.index : s.session.index + 1,
+          answers: { ...s.session.answers, [current.id]: { ...currentAnswer, skipped: true } },
+        },
+      };
+    });
     if (isLast) flash("已跳过本题，可交卷或返回前面继续作答");
   }
 
@@ -584,7 +587,7 @@ export default function Home() {
         <article className="question-card">
           <div className="question-meta-actions">
             <div className="question-tags"><span>{typeMeta[current.type].short}</span>{originLabel(current) && <span>{originLabel(current)}</span>}{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((tag, index) => <em key={`${current.id}-tag-${index}`}>{tag}</em>)}</div>
-            {!submitted && <button className="skip-button" onClick={skipCurrent}>跳过</button>}
+            {canSkipAnswer(currentAnswer) && <button className="skip-button" onClick={skipCurrent}>跳过</button>}
           </div>
           <div className="question-stats">{progressSummary(currentProgress)}</div>
           <h1>{current.question}</h1>

@@ -85,6 +85,25 @@ export function recordSkip(previous: QuestionProgress | undefined, now = Date.no
   };
 }
 
+export function canSkipAnswer(answer: { submitted?: boolean; skipped?: boolean } | undefined) {
+  return !answer?.submitted && !answer?.skipped;
+}
+
+export function mergeQuestionProgress(local: QuestionProgress | undefined, remote: QuestionProgress | undefined) {
+  if (!local) return remote;
+  if (!remote) return local;
+  const merged = {
+    ...((local.lastAttempt ?? 0) >= (remote.lastAttempt ?? 0) ? local : remote),
+  };
+  if (local.skipCount !== undefined || remote.skipCount !== undefined) {
+    merged.skipCount = Math.max(local.skipCount ?? 0, remote.skipCount ?? 0);
+  }
+  if (local.lastSkipped !== undefined || remote.lastSkipped !== undefined) {
+    merged.lastSkipped = Math.max(local.lastSkipped ?? 0, remote.lastSkipped ?? 0);
+  }
+  return merged;
+}
+
 export function progressUpdatedAt(progress: QuestionProgress | undefined) {
   return Math.max(progress?.lastAttempt ?? 0, progress?.lastSkipped ?? 0);
 }

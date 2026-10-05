@@ -143,7 +143,7 @@ test("mastery, skip, and answer statistics use the new contracts", async () => {
   assert.match(page, /跳过/);
   assert.match(page, /skipped/);
   assert.match(page, /report\.skipped/);
-  assert.match(page, /progressUpdatedAt\(record\) >= progressUpdatedAt\(remote\)/);
+  assert.match(page, /mergeQuestionProgress\(record, remote\)/);
   assert.doesNotMatch(page, /连续答对 5 次后进入已学会/);
 });
 
@@ -153,6 +153,8 @@ test("skip and weighted practice are wired without counting skips as attempts", 
     readFile(new URL("../app/study-progress.ts", import.meta.url), "utf8"),
   ]);
   assert.match(page, /function skipCurrent/);
+  assert.match(page, /canSkipAnswer\(currentAnswer\)/);
+  assert.match(page, /canSkipAnswer\(s\.session\.answers\[current\.id\]\)/);
   assert.match(page, /recordSkip\(s\.progress\[current\.id\]/);
   assert.match(page, /skipped: true/);
   assert.match(page, /题已完成\{Object\.values\(active\.answers\)\.filter\(\(a\) => a\.skipped && !a\.submitted\)/);
