@@ -4,17 +4,23 @@ import test from "node:test";
 import {
   buildOptionOrder,
   buildStudyPlan,
+  canSkipAnswer,
   choiceResultState,
   formatDuration,
   isRetiredQuestionId,
-  MASTERY_STREAK,
+  MASTERY_CORRECTS,
   normalizeMultipleAnswer,
   pickPracticeQuestions,
+  practiceQuestionWeight,
+  mergeQuestionProgress,
+  progressUpdatedAt,
   recordAttempt,
+  recordSkip,
   remapAnswerLetter,
   remapMultipleAnswer,
   REVIEW_INTERVAL_DAYS,
   sanitizeRetiredQuestionState,
+  weightedSampleWithoutReplacement,
   type ProgressMap,
   type QuestionProgress,
 } from "../app/study-progress.ts";
@@ -69,38 +75,66 @@ test("non-choice answers and missing legacy option orders stay compatible", () =
   assert.equal(remapAnswerLetter("B", [0, 1, 2, 3]), "B");
 });
 
-test("a question is mastered after five consecutive correct answers", () => {
+test("a question is mastered after three cumulative correct answers", () => {
   let progress: QuestionProgress | undefined;
-  for (let attempt = 1; attempt <= MASTERY_STREAK; attempt++) {
-    progress = recordAttempt(progress, true, 1000 + attempt);
-  }
+  for (const correct of [false, true, false, true, true]) progress = recordAttempt(progress, correct, 1000 + (progress?.attempts ?? 0) + 1);
   assert.ok(progress);
   assert.equal(progress.attempts, 5);
-  assert.equal(progress.correctStreak, 5);
+  assert.equal(progress.correctAttempts, 3);
+  assert.equal(progress.masteryCorrects, MASTERY_CORRECTS);
+  assert.equal(progress.correctStreak, 2);
   assert.equal(progress.masteredAt, 1005);
   assert.equal(progress.reviewStep, 0);
   assert.equal(progress.nextReviewAt, 1005 + 7 * DAY_MS);
 });
 
-test("an incorrect answer resets the streak and returns a mastered question to learning", () => {
-  const mastered: QuestionProgress = { attempts: 5, correctStreak: 5, lastAttempt: 1005, masteredAt: 1005 };
-  const progress = recordAttempt(mastered, false, 1006);
-  assert.deepEqual(progress, { attempts: 6, correctStreak: 0, lastAttempt: 1006 });
+test("an incorrect answer does not reset cumulative mastery progress", () => {
+  let progress = recordAttempt(undefined, true, 1001);
+  progress = recordAttempt(progress, false, 1002);
+  assert.equal(progress.correctAttempts, 1);
+  assert.equal(progress.masteryCorrects, 1);
+  assert.equal(progress.correctStreak, 0);
 });
 
-test("practice selection excludes mastered questions and prioritizes unseen questions", () => {
+test("legacy unmastered progress starts new counters without inheriting streak", () => {
+  const progress = recordAttempt({ attempts: 8, correctStreak: 4, lastAttempt: 1000 }, true, 1001);
+  assert.equal(progress.correctAttempts, 1);
+  assert.equal(progress.masteryCorrects, 1);
+  assert.equal(progress.correctStreak, 5);
+  assert.equal(progress.masteredAt, undefined);
+});
+
+test("legacy mastered progress remains mastered and starts new correct count", () => {
+  const progress = recordAttempt({ attempts: 8, correctStreak: 4, lastAttempt: 1000, masteredAt: 1000 }, true, 1001);
+  assert.equal(progress.masteredAt, 1000);
+  assert.equal(progress.masteryCorrects, MASTERY_CORRECTS);
+  assert.equal(progress.correctAttempts, 1);
+  assert.equal(progress.reviewStep, 1);
+});
+
+test("mastered review wrong resets mastery cycle but keeps correct history", () => {
+  const mastered: QuestionProgress = { attempts: 8, correctStreak: 3, correctAttempts: 8, masteryCorrects: 3, lastAttempt: 1005, masteredAt: 1005, reviewStep: 1, nextReviewAt: 2000 };
+  const progress = recordAttempt(mastered, false, 1006);
+  assert.equal(progress.correctAttempts, 8);
+  assert.equal(progress.masteryCorrects, 0);
+  assert.equal(progress.masteredAt, undefined);
+  assert.equal(progress.reviewStep, undefined);
+  assert.equal(progress.nextReviewAt, undefined);
+  assert.equal(progress.attempts, 9);
+});
+
+test("practice selection excludes mastered questions that are not due", () => {
   const questions = [{ id: "unseen-1" }, { id: "learning" }, { id: "mastered" }, { id: "unseen-2" }];
   const progress: ProgressMap = {
     learning: { attempts: 2, correctStreak: 1, lastAttempt: 20 },
     mastered: { attempts: 5, correctStreak: 5, lastAttempt: 50, masteredAt: 50, nextReviewAt: Date.now() + DAY_MS },
   };
   const picked = pickPracticeQuestions(questions, progress, { limit: 3, random: () => 0.5 });
-  assert.deepEqual(new Set(picked.slice(0, 2).map((question) => question.id)), new Set(["unseen-1", "unseen-2"]));
-  assert.equal(picked[2].id, "learning");
+  assert.equal(picked.length, 3);
   assert.ok(picked.every((question) => question.id !== "mastered"));
 });
 
-test("due reviews are selected before unseen and learning questions", () => {
+test("weighted practice selection includes due, unseen, and learning candidates", () => {
   const now = 10 * DAY_MS;
   const questions = [{ id: "learning" }, { id: "unseen" }, { id: "cooling" }, { id: "due" }];
   const progress: ProgressMap = {
@@ -109,7 +143,104 @@ test("due reviews are selected before unseen and learning questions", () => {
     due: { attempts: 5, correctStreak: 5, lastAttempt: now - 8 * DAY_MS, masteredAt: now - 8 * DAY_MS, nextReviewAt: now - DAY_MS },
   };
   const picked = pickPracticeQuestions(questions, progress, { limit: 3, now, random: () => 0.5 });
-  assert.deepEqual(picked.map((question) => question.id), ["due", "unseen", "learning"]);
+  assert.deepEqual(new Set(picked.map((question) => question.id)), new Set(["due", "unseen", "learning"]));
+});
+
+test("skip updates only persistent skip metadata and leaves attempts untouched", () => {
+  const progress = recordSkip(undefined, 1234);
+  assert.deepEqual(progress, { attempts: 0, correctStreak: 0, lastAttempt: 0, skipCount: 1, lastSkipped: 1234 });
+  const skippedAgain = recordSkip({ ...progress, correctAttempts: 2, masteryCorrects: 1 }, 2345);
+  assert.equal(skippedAgain.attempts, 0);
+  assert.equal(skippedAgain.correctAttempts, 2);
+  assert.equal(skippedAgain.masteryCorrects, 1);
+  assert.equal(skippedAgain.skipCount, 2);
+  assert.equal(progressUpdatedAt(skippedAgain), 2345);
+});
+
+test("a skipped answer cannot be skipped again", () => {
+  assert.equal(canSkipAnswer({ value: "", skipped: true }), false);
+  assert.equal(canSkipAnswer({ value: "", submitted: true }), false);
+  assert.equal(canSkipAnswer({ value: "" }), true);
+});
+
+test("progress merge keeps newer answer state and merges newer skip metadata", () => {
+  const remoteMastered: QuestionProgress = {
+    attempts: 3,
+    correctStreak: 3,
+    correctAttempts: 3,
+    masteryCorrects: 3,
+    masteredAt: 200,
+    reviewStep: 1,
+    nextReviewAt: 300,
+    lastAttempt: 200,
+    skipCount: 1,
+    lastSkipped: 150,
+  };
+  const localOlderWithLaterSkip: QuestionProgress = {
+    attempts: 1,
+    correctStreak: 0,
+    correctAttempts: 0,
+    masteryCorrects: 0,
+    lastAttempt: 100,
+    skipCount: 2,
+    lastSkipped: 300,
+  };
+  const mergedA = mergeQuestionProgress(localOlderWithLaterSkip, remoteMastered);
+  assert.equal(mergedA?.masteredAt, 200);
+  assert.equal(mergedA?.masteryCorrects, 3);
+  assert.equal(mergedA?.attempts, 3);
+  assert.equal(mergedA?.reviewStep, 1);
+  assert.equal(mergedA?.skipCount, 2);
+  assert.equal(mergedA?.lastSkipped, 300);
+
+  const localNewerAnswer: QuestionProgress = {
+    attempts: 4,
+    correctStreak: 1,
+    correctAttempts: 4,
+    masteryCorrects: 1,
+    lastAttempt: 500,
+    skipCount: 1,
+    lastSkipped: 400,
+  };
+  const remoteNewerSkip: QuestionProgress = {
+    attempts: 2,
+    correctStreak: 2,
+    correctAttempts: 2,
+    masteryCorrects: 2,
+    masteredAt: 250,
+    reviewStep: 0,
+    lastAttempt: 250,
+    skipCount: 3,
+    lastSkipped: 600,
+  };
+  const mergedB = mergeQuestionProgress(localNewerAnswer, remoteNewerSkip);
+  assert.equal(mergedB?.attempts, 4);
+  assert.equal(mergedB?.masteryCorrects, 1);
+  assert.equal(mergedB?.masteredAt, undefined);
+  assert.equal(mergedB?.skipCount, 3);
+  assert.equal(mergedB?.lastSkipped, 600);
+
+  const current = { ...localNewerAnswer, skipCount: 5, lastSkipped: 700 };
+  const oldSnapshot = { ...remoteNewerSkip, skipCount: 2, lastSkipped: 200 };
+  const mergedC = mergeQuestionProgress(current, oldSnapshot);
+  assert.equal(mergedC?.skipCount, 5);
+  assert.equal(mergedC?.lastSkipped, 700);
+});
+
+test("skip penalty lowers weight without reaching zero and applies to due reviews", () => {
+  const now = 10 * DAY_MS;
+  const unseen = { attempts: 0, correctStreak: 0, lastAttempt: 0 };
+  const due = { attempts: 4, correctStreak: 3, lastAttempt: now - 8 * DAY_MS, masteredAt: now - 8 * DAY_MS, nextReviewAt: now - DAY_MS };
+  assert.ok(practiceQuestionWeight(due, now) > practiceQuestionWeight(unseen, now));
+  assert.ok(practiceQuestionWeight({ ...due, skipCount: 2 }, now) < practiceQuestionWeight(unseen, now));
+  assert.ok(practiceQuestionWeight({ ...unseen, skipCount: 100 }, now) > 0);
+  assert.ok(practiceQuestionWeight({ ...due, skipCount: 100 }, now) > 0);
+});
+
+test("weighted sampler does not repeat items", () => {
+  const picked = weightedSampleWithoutReplacement(["a", "b", "c"], () => 1, { limit: 3, random: () => 0.5 });
+  assert.equal(picked.length, 3);
+  assert.equal(new Set(picked).size, 3);
 });
 
 test("successful reviews advance from 7 to 14 to recurring 30 day intervals", () => {
@@ -133,12 +264,17 @@ test("successful reviews advance from 7 to 14 to recurring 30 day intervals", ()
   assert.equal(progress.nextReviewAt, 4000 + 30 * DAY_MS);
 });
 
-test("study plan spreads five mastery attempts per target question across remaining days", () => {
+test("study plan spreads three mastery attempts per target question across remaining days", () => {
   const plan = buildStudyPlan({}, 306, 0, 1000);
   assert.equal(plan.dailyNewTarget, 4);
-  assert.equal(plan.dailyMasteryTarget, 17);
-  assert.equal(plan.dailyTarget, 17);
-  assert.equal(plan.remainingMasteryAttempts, 5000);
+  assert.equal(plan.dailyMasteryTarget, 10);
+  assert.equal(plan.dailyTarget, 10);
+  assert.equal(plan.remainingMasteryAttempts, 3000);
+});
+
+test("study plan ignores legacy correct streak credit", () => {
+  const plan = buildStudyPlan({ learning: { attempts: 4, correctStreak: 4, lastAttempt: 1 } }, 300, 0, 1000);
+  assert.equal(plan.remainingMasteryAttempts, 3_000);
 });
 
 test("practice duration is formatted with minutes and seconds", () => {

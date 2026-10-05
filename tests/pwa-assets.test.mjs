@@ -27,7 +27,7 @@ test("retired party-history bank is not present", async () => {
 
 test("service worker cache is bumped for the new question bank", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  assert.match(worker, /xinghuo-study-pwa-v10/);
+  assert.match(worker, /xinghuo-study-pwa-v11/);
 });
 
 test("service worker precaches the essential offline files", async () => {
@@ -130,4 +130,34 @@ test("topic picker exposes multiple-choice topics and disables empty party histo
   assert.match(page, /type: "single" \| "multiple" \| "judge" \| "fill"/);
   assert.match(page, /disabled=\{!total\}/);
   assert.match(page, /party-history/);
+});
+
+test("mastery, skip, and answer statistics use the new contracts", async () => {
+  const [page, progress] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/study-progress.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(progress, /MASTERY_CORRECTS = 3/);
+  assert.match(page, /累计答对3次后进入已学会/);
+  assert.match(page, /新版做对/);
+  assert.match(page, /跳过/);
+  assert.match(page, /skipped/);
+  assert.match(page, /report\.skipped/);
+  assert.match(page, /mergeQuestionProgress\(record, remote\)/);
+  assert.doesNotMatch(page, /连续答对 5 次后进入已学会/);
+});
+
+test("skip and weighted practice are wired without counting skips as attempts", async () => {
+  const [page, progress] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/study-progress.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /function skipCurrent/);
+  assert.match(page, /canSkipAnswer\(currentAnswer\)/);
+  assert.match(page, /canSkipAnswer\(s\.session\.answers\[current\.id\]\)/);
+  assert.match(page, /recordSkip\(s\.progress\[current\.id\]/);
+  assert.match(page, /skipped: true/);
+  assert.match(page, /题已完成\{Object\.values\(active\.answers\)\.filter\(\(a\) => a\.skipped && !a\.submitted\)/);
+  assert.match(progress, /weightedSampleWithoutReplacement/);
+  assert.match(progress, /practiceQuestionWeight/);
 });
