@@ -27,7 +27,7 @@ test("retired party-history bank is not present", async () => {
 
 test("service worker cache is bumped for the new question bank", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  assert.match(worker, /xinghuo-study-pwa-v9/);
+  assert.match(worker, /xinghuo-study-pwa-v10/);
 });
 
 test("service worker precaches the essential offline files", async () => {
@@ -115,6 +115,14 @@ test("official multiple-choice bank is present with origin metadata", async () =
   assert.match(page, /remapMultipleAnswer/);
   assert.equal((page.match(/choiceResultState\(/g) ?? []).length, 2);
   assert.match(page, /官方原题/);
+});
+
+test("question tags use stable unique React keys", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /reviewQuestion\.tags\.map\(\(tag, index\) => <em key=\{`\$\{reviewQuestion\.id\}-tag-\$\{index\}`\}/);
+  assert.match(page, /current\.tags\.map\(\(tag, index\) => <em key=\{`\$\{current\.id\}-tag-\$\{index\}`\}/);
+  assert.doesNotMatch(page, /key=\{t\}/);
+  assert.doesNotMatch(page, /key=\{tag\}/);
 });
 
 test("topic picker exposes multiple-choice topics and disables empty party history", async () => {
