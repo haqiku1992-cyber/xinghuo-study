@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildOptionOrder, buildStudyPlan, choiceResultState, formatDuration, getNextReviewAt, isReviewDue, MASTERY_STREAK, normalizeMultipleAnswer, pickPracticeQuestions, recordAttempt, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap } from "./study-progress";
+import { buildOptionOrder, buildStudyPlan, choiceResultState, formatDuration, getNextReviewAt, isReviewDue, MASTERY_CORRECTS, normalizeMultipleAnswer, pickPracticeQuestions, progressUpdatedAt, recordAttempt, recordSkip, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap, type QuestionProgress } from "./study-progress";
 import { collectWrongReview, type WrongReviewSnapshot, wrongReviewLabel } from "./wrong-review";
 
 type QuestionType = "single" | "multiple" | "judge" | "fill" | "short" | "essay";
@@ -11,7 +11,7 @@ type Tab = "home" | "practice" | "wrong" | "stats" | "settings";
 type Screen = "main" | "topic" | "quiz" | "report" | "review";
 type Rating = "mastered" | "fuzzy" | "unknown";
 type PracticeOptions = { wrongOnly?: boolean; topic?: PracticeTopic };
-type Answer = { value: string; submitted?: boolean; correct?: boolean; rating?: Rating };
+type Answer = { value: string; submitted?: boolean; correct?: boolean; rating?: Rating; skipped?: boolean };
 type Question = {
   id: string;
   type: QuestionType;
@@ -52,7 +52,7 @@ type Session = {
   reviewIds?: string[];
 };
 type WrongRecord = { count: number; lastWrong: number; streak: number; keep?: boolean };
-type HistoryItem = { id: string; type: QuestionType; at: number; durationMs: number; count: number; correct: number; ratings: Record<Rating, number> };
+type HistoryItem = { id: string; type: QuestionType; at: number; durationMs: number; count: number; correct: number; ratings: Record<Rating, number>; skipped?: number };
 type Store = { session: Session | null; wrong: Record<string, WrongRecord>; progress: ProgressMap; history: HistoryItem[]; theme: "light" | "dark" };
 type SyncStatus = "disconnected" | "connecting" | "synced" | "pending" | "error";
 
@@ -95,7 +95,7 @@ function mergeStores(local: Store, cloudValue: unknown): Store {
   const progress: ProgressMap = { ...cloud.progress };
   for (const [id, record] of Object.entries(local.progress)) {
     const remote = progress[id];
-    if (!remote || record.lastAttempt >= remote.lastAttempt) progress[id] = record;
+    if (!remote || progressUpdatedAt(record) >= progressUpdatedAt(remote)) progress[id] = record;
   }
   const session = !cloud.session || (local.session && local.session.startedAt >= cloud.session.startedAt)
     ? local.session
@@ -124,6 +124,15 @@ function answerLabel(value: string | undefined, type: QuestionType) {
   if (type === "judge") return value === "T" ? "正确" : value === "F" ? "错误" : value ?? "";
   if (type === "multiple") return normalizeMultipleAnswer(value ?? "").split("").join("、");
   return value ?? "";
+}
+function progressSummary(progress: QuestionProgress | undefined) {
+  const attempts = progress?.attempts ?? 0;
+  const skipCount = progress?.skipCount ?? 0;
+  if (!attempts && !skipCount) return "首次作答";
+  const parts = [`做过 ${attempts} 次`, `新版做对 ${progress?.correctAttempts ?? 0} 次`];
+  parts.push(progress?.masteredAt ? "已学会" : `掌握 ${Math.min(MASTERY_CORRECTS, progress?.masteryCorrects ?? 0)}/${MASTERY_CORRECTS}`);
+  if (skipCount) parts.push(`跳过 ${skipCount} 次`);
+  return parts.join(" · ");
 }
 function sameDay(a: number, b = Date.now()) {
   return new Date(a).toDateString() === new Date(b).toDateString();
@@ -354,10 +363,31 @@ export default function Home() {
   }
   function updateAnswer(patch: Partial<Answer>) {
     if (!active || !current) return;
+    setStore((s) => {
+      if (!s.session) return s;
+      const nextAnswer = { ...currentAnswer, ...patch };
+      if ("value" in patch || patch.submitted || patch.rating) delete nextAnswer.skipped;
+      return {
+        ...s,
+        session: { ...s.session, answers: { ...s.session.answers, [current.id]: nextAnswer } },
+      };
+    });
+  }
+
+  function skipCurrent() {
+    if (!active || !current || currentAnswer.submitted) return;
+    const now = Date.now();
+    const isLast = active.index === active.questionIds.length - 1;
     setStore((s) => s.session ? ({
       ...s,
-      session: { ...s.session, answers: { ...s.session.answers, [current.id]: { ...currentAnswer, ...patch } } },
+      progress: { ...s.progress, [current.id]: recordSkip(s.progress[current.id], now) },
+      session: {
+        ...s.session,
+        index: isLast ? s.session.index : s.session.index + 1,
+        answers: { ...s.session.answers, [current.id]: { ...currentAnswer, skipped: true } },
+      },
     }) : s);
+    if (isLast) flash("已跳过本题，可交卷或返回前面继续作答");
   }
 
   function submitObjective() {
@@ -424,6 +454,7 @@ export default function Home() {
     if (!active) return;
     const isObjective = isObjectiveType(active.type);
     const answers = Object.values(active.answers).filter((a) => a.submitted);
+    const skipped = Object.values(active.answers).filter((a) => a.skipped && !a.submitted).length;
     const wrongReviewSnapshot = isObjective
       ? collectWrongReview(active.questionIds, active.answers, active.optionOrders, active.type === "multiple" ? "multiple" : active.type === "single" ? "single" : "judge")
       : [];
@@ -431,6 +462,7 @@ export default function Home() {
     const item: HistoryItem = {
       id: active.id, type: active.type, at: finishedAt, durationMs: Math.max(0, finishedAt - active.startedAt), count: answers.length,
       correct: isObjective ? answers.filter((a) => a.correct).length : 0,
+      skipped,
       ratings: {
         mastered: answers.filter((a) => a.rating === "mastered").length,
         fuzzy: answers.filter((a) => a.rating === "fuzzy").length,
@@ -545,12 +577,16 @@ export default function Home() {
         </header>
         <div className="progress-row">
           <span>第 <strong>{active.index + 1}</strong> / {active.questionIds.length} 题</span>
-          <span>{Object.values(active.answers).filter((a) => a.submitted).length} 题已完成</span>
+          <span>{Object.values(active.answers).filter((a) => a.submitted).length} 题已完成{Object.values(active.answers).filter((a) => a.skipped && !a.submitted).length ? ` · ${Object.values(active.answers).filter((a) => a.skipped && !a.submitted).length} 题跳过` : ""}</span>
         </div>
         <div className="progress-track"><i style={{ width: `${((active.index + 1) / active.questionIds.length) * 100}%` }} /></div>
 
         <article className="question-card">
-          <div className="question-tags"><span>{typeMeta[current.type].short}</span>{originLabel(current) && <span>{originLabel(current)}</span>}{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((tag, index) => <em key={`${current.id}-tag-${index}`}>{tag}</em>)}</div>
+          <div className="question-meta-actions">
+            <div className="question-tags"><span>{typeMeta[current.type].short}</span>{originLabel(current) && <span>{originLabel(current)}</span>}{active.reviewIds?.includes(current.id) && <span>到期复习</span>}{current.tags.map((tag, index) => <em key={`${current.id}-tag-${index}`}>{tag}</em>)}</div>
+            {!submitted && <button className="skip-button" onClick={skipCurrent}>跳过</button>}
+          </div>
+          <div className="question-stats">{progressSummary(currentProgress)}</div>
           <h1>{current.question}</h1>
           {(current.type === "single" || current.type === "multiple") && (
             <div className="options">
@@ -608,8 +644,8 @@ export default function Home() {
             {!subjective && <div className={`answer-result ${currentAnswer.correct ? "ok" : "bad"}`}><b>{currentAnswer.correct ? "回答正确" : "再想一想"}</b><span>正确答案：{answerLabel(current.type === "judge" ? current.answer : displayedAnswer, current.type)}</span></div>}
             {(!subjective || currentAnswer.rating) && (
               <div className={`mastery-progress ${currentProgress?.masteredAt ? "done" : ""}`}>
-                <b>{currentProgress?.masteredAt ? "已学会" : `掌握进度 ${currentProgress?.correctStreak ?? 0}/${MASTERY_STREAK}`}</b>
-                <span>{currentProgress?.masteredAt && currentNextReviewAt ? `下次复习 ${new Date(currentNextReviewAt).toLocaleDateString("zh-CN")}` : `连续答对 ${MASTERY_STREAK} 次后进入已学会`}</span>
+                <b>{currentProgress?.masteredAt ? "已学会" : `掌握进度 ${Math.min(MASTERY_CORRECTS, currentProgress?.masteryCorrects ?? 0)}/${MASTERY_CORRECTS}`}</b>
+                <span>{currentProgress?.masteredAt && currentNextReviewAt ? `下次复习 ${new Date(currentNextReviewAt).toLocaleDateString("zh-CN")}` : "累计答对3次后进入已学会"}</span>
               </div>
             )}
             <div className="reference">
@@ -648,6 +684,7 @@ export default function Home() {
           {objective ? <><div><strong>{report.correct}</strong><span>正确</span></div><div><strong>{report.count - report.correct}</strong><span>错误</span></div><div><strong>{report.count ? Math.round(report.correct / report.count * 100) : 0}%</strong><span>正确率</span></div></> :
             <><div><strong>{report.ratings.mastered}</strong><span>掌握</span></div><div><strong>{report.ratings.fuzzy}</strong><span>模糊</span></div><div><strong>{report.ratings.unknown}</strong><span>不会</span></div></>}
         </div>
+        {report.skipped ? <div className="report-skipped">跳过 {report.skipped} 题</div> : null}
         <div className="report-note">用时 {formatDuration(report.durationMs)} · 错题会进入复习区</div>
         {objective && wrongReview.length > 0 && <button className="secondary-button" onClick={openWrongReview}>{wrongReviewLabel(wrongReview.length)}</button>}
         <button className="primary-button" onClick={() => startPractice(report.type)}>再练一轮</button>
@@ -784,7 +821,7 @@ function PracticePage({ questions, progress, startPractice, openTopicPicker, act
   return <section className="subpage"><PageHeader eyebrow="按题型专项练习" title="开始刷题" />
     {active && <button className="continue-card" onClick={resume}><span><small>未完成的练习</small><strong>{typeMeta[active.type].name} · 第 {active.index + 1}/{active.questionIds.length} 题</strong></span><b>继续 ›</b></button>}
     <div className="practice-list">{(Object.keys(typeMeta) as QuestionType[]).map((type) => <button key={type} onClick={() => isObjectiveType(type) || type === "fill" ? openTopicPicker(type) : startPractice(type)}><i className={typeMeta[type].tone}>{typeMeta[type].icon}</i><span><strong>{typeMeta[type].name}</strong><small>{questions.filter((q) => q.type === type && !progress[q.id]?.masteredAt).length} 待学 · {questions.filter((q) => q.type === type && progress[q.id]?.masteredAt).length} 已学会</small></span><b>开始 ›</b></button>)}</div>
-    <div className="tip-card"><b>练习说明</b><p>每轮优先加入没做过的题；连续答对 5 次后标记为“已学会”，后续常规练习不再出现。答错会重新累计。</p></div>
+    <div className="tip-card"><b>练习说明</b><p>每轮优先加入没做过的题；累计答对 3 次后标记为“已学会”，后续常规练习不再出现。答错不会清零掌握进度。</p></div>
   </section>;
 }
 function WrongPage({ questions, wrong, startPractice, clearType }: { questions: Question[]; wrong: Store["wrong"]; startPractice: (type: QuestionType, options?: PracticeOptions) => void; clearType: (t: QuestionType) => void }) {
@@ -814,7 +851,7 @@ function StatsPage({ history, wrongCount }: { history: HistoryItem[]; questions:
       const objective = isObjectiveType(h.type);
       const score = objective ? h.correct : h.ratings.mastered;
       const resultRate = h.count ? Math.round(score / h.count * 100) : 0;
-      return <div key={h.id}><span><strong>{typeMeta[h.type].name}</strong><small>{new Date(h.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small></span><div className="history-result"><b>{score}/{h.count}</b><small>{resultRate}% {objective ? "正确率" : "掌握率"}</small></div></div>;
+      return <div key={h.id}><span><strong>{typeMeta[h.type].name}</strong><small>{new Date(h.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small></span><div className="history-result"><b>{score}/{h.count}</b><small>{resultRate}% {objective ? "正确率" : "掌握率"}{h.skipped ? ` · 跳过 ${h.skipped}` : ""}</small></div></div>;
     })}</div> : <div className="empty-mini">完成第一轮练习后，这里会生成你的学习轨迹。</div>}
   </section>;
 }

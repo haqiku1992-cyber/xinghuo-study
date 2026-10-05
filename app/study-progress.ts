@@ -1,4 +1,4 @@
-export const MASTERY_STREAK = 5;
+export const MASTERY_CORRECTS = 3;
 export const REVIEW_INTERVAL_DAYS = [7, 14, 30] as const;
 export const STUDY_TARGET = 1000;
 const DAY_MS = 86_400_000;
@@ -7,6 +7,10 @@ export type QuestionProgress = {
   attempts: number;
   correctStreak: number;
   lastAttempt: number;
+  correctAttempts?: number;
+  masteryCorrects?: number;
+  skipCount?: number;
+  lastSkipped?: number;
   masteredAt?: number;
   reviewStep?: number;
   nextReviewAt?: number;
@@ -32,29 +36,57 @@ export function sanitizeRetiredQuestionState<T extends {
 export function recordAttempt(previous: QuestionProgress | undefined, correct: boolean, now = Date.now()): QuestionProgress {
   const correctStreak = correct ? (previous?.correctStreak ?? 0) + 1 : 0;
   const next: QuestionProgress = {
+    ...previous,
     attempts: (previous?.attempts ?? 0) + 1,
     correctStreak,
     lastAttempt: now,
+    correctAttempts: (previous?.correctAttempts ?? 0) + (correct ? 1 : 0),
+    masteryCorrects: Math.min(MASTERY_CORRECTS, (previous?.masteryCorrects ?? 0) + (correct ? 1 : 0)),
   };
-  if (!correct) return next;
+  if (!correct) {
+    if (previous?.masteredAt) {
+      delete next.masteredAt;
+      delete next.reviewStep;
+      delete next.nextReviewAt;
+      next.masteryCorrects = 0;
+    }
+    return next;
+  }
   if (previous?.masteredAt) {
     const reviewStep = Math.min((previous.reviewStep ?? 0) + 1, REVIEW_INTERVAL_DAYS.length - 1);
     return {
       ...next,
       masteredAt: previous.masteredAt,
+      masteryCorrects: MASTERY_CORRECTS,
       reviewStep,
       nextReviewAt: now + REVIEW_INTERVAL_DAYS[reviewStep] * DAY_MS,
     };
   }
-  if (correctStreak >= MASTERY_STREAK) {
+  if ((next.masteryCorrects ?? 0) >= MASTERY_CORRECTS) {
     return {
       ...next,
       masteredAt: now,
+      masteryCorrects: MASTERY_CORRECTS,
       reviewStep: 0,
       nextReviewAt: now + REVIEW_INTERVAL_DAYS[0] * DAY_MS,
     };
   }
   return next;
+}
+
+export function recordSkip(previous: QuestionProgress | undefined, now = Date.now()): QuestionProgress {
+  return {
+    ...previous,
+    attempts: previous?.attempts ?? 0,
+    correctStreak: previous?.correctStreak ?? 0,
+    lastAttempt: previous?.lastAttempt ?? 0,
+    skipCount: (previous?.skipCount ?? 0) + 1,
+    lastSkipped: now,
+  };
+}
+
+export function progressUpdatedAt(progress: QuestionProgress | undefined) {
+  return Math.max(progress?.lastAttempt ?? 0, progress?.lastSkipped ?? 0);
 }
 
 export function getNextReviewAt(progress: QuestionProgress) {
@@ -116,22 +148,60 @@ export function pickPracticeQuestions<T extends { id: string }>(
   progress: ProgressMap,
   { limit = 15, includeMastered = false, now = Date.now(), random = Math.random }: { limit?: number; includeMastered?: boolean; now?: number; random?: () => number } = {},
 ) {
-  if (includeMastered) return shuffle(questions, random).slice(0, limit);
-  const due = questions.filter((question) => isReviewDue(progress[question.id], now));
-  const learningPool = questions.filter((question) => !progress[question.id]?.masteredAt);
-  const unseen = learningPool.filter((question) => !progress[question.id]?.attempts);
-  const learning = learningPool.filter((question) => progress[question.id]?.attempts);
-  return [...shuffle(due, random), ...shuffle(unseen, random), ...shuffle(learning, random)].slice(0, limit);
+  const candidates = includeMastered
+    ? questions
+    : questions.filter((question) => !progress[question.id]?.masteredAt || isReviewDue(progress[question.id], now));
+  return weightedSampleWithoutReplacement(candidates, (question) => practiceQuestionWeight(progress[question.id], now), { limit, random });
+}
+
+export function practiceQuestionWeight(progress: QuestionProgress | undefined, now = Date.now()) {
+  const baseWeight = isReviewDue(progress, now)
+    ? 6
+    : !progress?.attempts
+      ? 4
+      : 3 / (1 + progress.attempts * 0.25);
+  const skipPenalty = Math.max(0.15, 1 / (1 + (progress?.skipCount ?? 0)));
+  const weight = baseWeight * skipPenalty;
+  return Number.isFinite(weight) && weight > 0 ? weight : 0.000001;
+}
+
+export function weightedSampleWithoutReplacement<T>(
+  items: T[],
+  getWeight: (item: T) => number,
+  { limit = items.length, random = Math.random }: { limit?: number; random?: () => number } = {},
+) {
+  const remaining = [...items];
+  const picked: T[] = [];
+  while (remaining.length && picked.length < limit) {
+    const weights = remaining.map((item) => {
+      const weight = Number(getWeight(item));
+      return Number.isFinite(weight) && weight > 0 ? weight : 0.000001;
+    });
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    const randomValue = Number(random());
+    const unit = Number.isFinite(randomValue) ? Math.min(0.999999999, Math.max(0, randomValue)) : 0;
+    let cursor = unit * total;
+    let index = weights.length - 1;
+    for (let i = 0; i < weights.length; i += 1) {
+      cursor -= weights[i];
+      if (cursor < 0) {
+        index = i;
+        break;
+      }
+    }
+    picked.push(remaining.splice(index, 1)[0]);
+  }
+  return picked;
 }
 
 export function buildStudyPlan(progress: ProgressMap, daysLeft: number, now = Date.now(), target = STUDY_TARGET) {
   const records = Object.values(progress);
   const masteredCount = Math.min(target, records.filter((record) => record.masteredAt).length);
   const seenCount = Math.min(target, records.filter((record) => record.attempts > 0).length);
-  const streakCredit = records
+  const masteryCredit = records
     .filter((record) => !record.masteredAt)
-    .reduce((sum, record) => sum + Math.min(MASTERY_STREAK, record.correctStreak), 0);
-  const remainingMasteryAttempts = Math.max(0, (target - masteredCount) * MASTERY_STREAK - streakCredit);
+    .reduce((sum, record) => sum + Math.min(MASTERY_CORRECTS, record.masteryCorrects ?? 0), 0);
+  const remainingMasteryAttempts = Math.max(0, (target - masteredCount) * MASTERY_CORRECTS - masteryCredit);
   const planningDays = Math.max(1, daysLeft);
   const dailyMasteryTarget = Math.ceil(remainingMasteryAttempts / planningDays);
   const dailyNewTarget = Math.ceil(Math.max(0, target - seenCount) / planningDays);
