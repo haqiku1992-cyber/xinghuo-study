@@ -9,13 +9,14 @@
     "dev": "vinext dev",
     "build": "node scripts/sync-public-assets.mjs && vinext build",
     "start": "vinext start",
-    "test": "npm run build && node scripts/audit-question-bank.mjs && node --experimental-strip-types --test tests/question-bank.test.mjs tests/pwa-assets.test.mjs tests/study-progress.test.ts",
+    "test": "npm run build && node scripts/audit-question-bank.mjs && node --experimental-strip-types --test tests/question-bank.test.mjs tests/pwa-assets.test.mjs tests/study-progress.test.ts tests/production-assets.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
-    "next": "16.2.6",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "next": "16.4.3",
+    "react": "19.2.9",
+    "react-dom": "19.2.9",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",
@@ -23,15 +24,18 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
+    "@vitejs/plugin-rsc": "0.5.27",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.6",
-    "react-server-dom-webpack": "19.2.6",
+    "eslint-config-next": "16.4.3",
+    "react-server-dom-webpack": "19.2.9",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
-    "vinext": "0.0.50",
-    "vite": "8.0.13",
+    "vinext": "0.0.55",
+    "vite": "8.1.6",
     "wrangler": "4.92.0"
   },
-  "type": "module"
+  "type": "module",
+  "overrides": {
+    "sharp": "$sharp"
+  }
 }
