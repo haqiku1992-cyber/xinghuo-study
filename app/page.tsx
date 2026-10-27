@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildOptionOrder, buildStudyPlan, canSkipAnswer, choiceResultState, formatDuration, getNextReviewAt, isReviewDue, MASTERY_CORRECTS, mergeQuestionProgress, normalizeMultipleAnswer, pickPracticeQuestions, recordAttempt, recordSkip, remapAnswerLetter, remapMultipleAnswer, sanitizeRetiredQuestionState, STUDY_TARGET, type ProgressMap, type QuestionProgress } from "./study-progress";
 import { collectWrongReview, type WrongReviewSnapshot, wrongReviewLabel } from "./wrong-review";
+import { parseStudyBackup } from "./study-backup";
 
 type QuestionType = "single" | "multiple" | "judge" | "fill" | "short" | "essay";
 type QuestionTopic = "party-constitution" | "party-history" | "twentieth-congress" | "demo";
@@ -139,6 +140,8 @@ function sameDay(a: number, b = Date.now()) {
 }
 
 export default function Home() {
+  const desktopMode = typeof window !== "undefined" && window.location.protocol === "app:";
+  const [loadError, setLoadError] = useState("");
   const [questions, setQuestions] = useState<Question[]>([]);
   const [store, setStore] = useState<Store>(emptyStore);
   const [tab, setTab] = useState<Tab>("home");
@@ -163,26 +166,28 @@ export default function Home() {
     fetch("/questions.json").then((r) => {
       if (!r.ok) throw new Error("题库载入失败");
       return r.json();
-    }).then(setQuestions).catch(() => setNotice("题库暂时无法载入，请联网后重试"));
+    }).then(setQuestions).catch(() => desktopMode ? setLoadError("本地题库载入失败，请重新安装应用；学习数据不会被清除。") : setNotice("题库暂时无法载入，请联网后重试"));
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setStore(sanitizeRetiredQuestionState({ ...emptyStore, ...JSON.parse(raw) }));
-      const savedSecret = localStorage.getItem(SYNC_KEY);
+      if (raw) setStore(desktopMode ? parseStudyBackup(raw) as unknown as Store : sanitizeRetiredQuestionState({ ...emptyStore, ...JSON.parse(raw) }));
+      const savedSecret = desktopMode ? null : localStorage.getItem(SYNC_KEY);
       if (savedSecret) {
         setSyncSecret(savedSecret);
         setSyncInput(savedSecret);
       }
-    } catch {}
+    } catch {
+      if (desktopMode) { setLoadError("本地学习数据无法读取，原文件已保留。请先备份用户数据目录，再联系维护者。"); return; }
+    }
     setReady(true);
   }, []);
 
   useEffect(() => {
-    if (!ready || !syncSecret || syncReady) return;
+    if (desktopMode || !ready || !syncSecret || syncReady) return;
     void connectSync(syncSecret, false);
   }, [ready, syncSecret, syncReady]);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
+    if (desktopMode || !("serviceWorker" in navigator)) return;
     const register = () => navigator.serviceWorker.register("/sw.js").catch(() => {});
     window.addEventListener("load", register);
     return () => window.removeEventListener("load", register);
@@ -195,7 +200,7 @@ export default function Home() {
   }, [store, ready]);
 
   useEffect(() => {
-    if (!ready || !syncReady || !syncSecret) return;
+    if (desktopMode || !ready || !syncReady || !syncSecret) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     setSyncStatus("pending");
     syncTimer.current = setTimeout(async () => {
@@ -218,7 +223,7 @@ export default function Home() {
   }, [store, ready, syncReady, syncSecret]);
 
   useEffect(() => {
-    if (!ready || !syncReady || !syncSecret) return;
+    if (desktopMode || !ready || !syncReady || !syncSecret) return;
     let pulling = false;
     const refresh = async () => {
       if (pulling || document.visibilityState !== "visible") return;
@@ -263,6 +268,7 @@ export default function Home() {
   }
 
   async function connectSync(secretValue = syncInput, remember = true) {
+    if (desktopMode) return;
     const secret = secretValue.trim();
     if (!secret) return flash("请输入同步密码");
     setSyncStatus("connecting");
@@ -297,6 +303,7 @@ export default function Home() {
   }
 
   async function pullCloud(quiet = false) {
+    if (desktopMode) return;
     if (!syncSecret) return;
     if (!quiet) setSyncStatus("connecting");
     try {
@@ -318,10 +325,12 @@ export default function Home() {
   }
 
   async function syncNow() {
+    if (desktopMode) return;
     await pullCloud(false);
   }
 
   function disconnectSync() {
+    if (desktopMode) return;
     if (syncTimer.current) clearTimeout(syncTimer.current);
     localStorage.removeItem(SYNC_KEY);
     setSyncSecret("");
@@ -488,19 +497,26 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url; link.download = `星火学习数据-${new Date().toISOString().slice(0, 10)}.json`; link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
   function importData(file?: File) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      try { setStore(sanitizeRetiredQuestionState({ ...emptyStore, ...JSON.parse(String(reader.result)) })); flash("学习数据已恢复"); }
-      catch { flash("文件格式无法识别"); }
+      try {
+        const restored = parseStudyBackup(String(reader.result)) as unknown as Store;
+        if (localStorage.getItem(STORAGE_KEY) && !window.confirm("恢复备份将覆盖当前学习记录（包括主题和未完成练习），是否继续？")) return;
+        setStore(restored);
+        flash("学习数据已恢复");
+      } catch { flash("文件格式无法识别，原有学习数据未改变"); }
+      finally { if (importRef.current) importRef.current.value = ""; }
     };
+    reader.onerror = () => flash("文件无法读取，原有学习数据未改变");
     reader.readAsText(file);
   }
 
+  if (loadError) return <main className="app-shell"><div className="page-content"><h1>无法载入学习记录</h1><p role="alert">{loadError}</p><button onClick={() => window.location.reload()}>重试</button></div></main>;
   if (!ready) return null;
 
   if (screen === "topic" && topicPickerType) {
@@ -742,7 +758,7 @@ export default function Home() {
           <section className="subpage">
             <PageHeader eyebrow="偏好与数据" title="设置" />
             <div className="setting-card"><span><strong>显示主题</strong><small>适应不同阅读环境</small></span><button className="toggle" onClick={() => setStore((s) => ({ ...s, theme: s.theme === "light" ? "dark" : "light" }))}>{store.theme === "dark" ? "夜间" : "日间"}</button></div>
-            <SectionTitle title="设备同步" side={syncReady ? "已连接" : "单用户"} />
+            {!desktopMode && <><SectionTitle title="设备同步" side={syncReady ? "已连接" : "单用户"} />
             <div className="sync-card">
               <div className="sync-heading">
                 <span className={`sync-dot ${syncStatus}`} />
@@ -767,21 +783,23 @@ export default function Home() {
               )}
               <p>密码只保存在此设备；数据通过 HTTPS 写入你的 Zeabur 持久卷。</p>
             </div>
+            </>}
             <SectionTitle title="学习数据" />
             <div className="setting-list">
               <button onClick={exportData}><span><strong>导出学习数据</strong><small>保存为 JSON 文件</small></span><b>导出</b></button>
               <button onClick={() => importRef.current?.click()}><span><strong>恢复学习数据</strong><small>从之前的 JSON 备份恢复</small></span><b>选择文件</b></button>
               <input ref={importRef} hidden type="file" accept="application/json" onChange={(e) => importData(e.target.files?.[0])} />
             </div>
-            <SectionTitle title="安装到手机" />
+            {!desktopMode && <><SectionTitle title="安装到手机" />
             <div className="install-card">
               <b>像 App 一样打开</b>
               <p><strong>iPhone：</strong>用 Safari 打开本站，点“分享”→“添加到主屏幕”。</p>
               <p><strong>Android：</strong>用 Chrome 打开本站，点菜单→“安装应用”或“添加到主屏幕”。</p>
               <small>首次打开需要联网；加载完成后可离线进入已缓存页面和题库。</small>
             </div>
-            <div className="privacy-card"><b>本地优先</b><p>学习记录默认保存在当前设备；连接私人同步后，会加密传输至你自己的持久卷。</p></div>
-            <div className="version">学习记录 · PWA 版 0.3</div>
+            </>}
+            <div className="privacy-card"><b>{desktopMode ? "单机离线" : "本地优先"}</b><p>{desktopMode ? "学习记录只保存在这台电脑。卸载或更换电脑前，请先导出学习数据。" : "学习记录默认保存在当前设备；连接私人同步后，会加密传输至你自己的持久卷。"}</p></div>
+            <div className="version">{desktopMode ? "学习记录 · Windows 离线版" : "学习记录 · PWA 版 0.3"}</div>
           </section>
         )}
       </div>

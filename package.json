@@ -10,7 +10,11 @@
     "build": "node scripts/sync-public-assets.mjs && vinext build",
     "start": "vinext start",
     "test": "npm run build && node scripts/audit-question-bank.mjs && node --experimental-strip-types --test tests/question-bank.test.mjs tests/pwa-assets.test.mjs tests/study-progress.test.ts tests/production-assets.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "desktop:build": "node scripts/sync-public-assets.mjs && vite build --config desktop/vite.config.ts",
+    "desktop:dev": "npm run desktop:build && electron desktop/main.mjs",
+    "desktop:package": "npm run desktop:build && node desktop/make-icon.mjs && electron-builder --config desktop/electron-builder.json --win nsis --x64 --publish never",
+    "desktop:test": "node --experimental-strip-types --test desktop/tests/*.test.mjs && node desktop/test-electron.mjs"
   },
   "dependencies": {
     "next": "16.4.3",
@@ -25,6 +29,8 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.27",
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
     "eslint": "9.39.4",
     "eslint-config-next": "16.4.3",
     "react-server-dom-webpack": "19.2.9",
