@@ -53,6 +53,10 @@ export async function runSmoke(window, directory, requests, userData) {
   assert.equal(await execute(() => typeof window.require), "undefined");
   assert.equal(await execute(() => typeof window.process), "undefined");
   assert.equal(window.webContents.getLastWebPreferences().sandbox, true);
+  assert.equal(window.webContents.session.isSpellCheckerEnabled(), false);
+  assert.equal(window.webContents.getLastWebPreferences().nodeIntegration, false);
+  assert.equal(window.webContents.getLastWebPreferences().contextIsolation, true);
+  assert.equal(window.webContents.getLastWebPreferences().webSecurity, true);
   assert.equal(path.dirname(userData), directory);
 
   if (process.env.XINGHUO_SMOKE_PHASE === "write") {

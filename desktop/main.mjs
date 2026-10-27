@@ -29,6 +29,7 @@ else {
     logSmoke("app ready");
     Menu.setApplicationMenu(null);
     const requests = [];
+    session.defaultSession.setSpellCheckerEnabled(false);
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     session.defaultSession.setPermissionCheckHandler(() => false);
     session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
@@ -40,7 +41,7 @@ else {
     window = new BrowserWindow({
       title: "学习记录", width: 920, height: 860, minWidth: 400, minHeight: 600,
       show: !smoke, backgroundColor: "#f8f8f6", icon: fileURLToPath(new URL("./icon.ico", import.meta.url)),
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, devTools: !app.isPackaged },
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, spellcheck: false, devTools: !app.isPackaged },
     });
     logSmoke("window created");
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
