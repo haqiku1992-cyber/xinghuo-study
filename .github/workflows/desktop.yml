@@ -1,0 +1,35 @@
+name: Windows offline desktop
+on:
+  pull_request:
+  push:
+    branches: [desktop/windows-offline-app]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: npm
+      - run: npm install --global npm@11.13.0
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run desktop:build
+      - run: npm run desktop:test
+      - run: npm run desktop:package
+      - name: Packaged app smoke
+        run: node desktop/test-electron.mjs "release/win-unpacked/学习记录.exe"
+      - name: Install, upgrade, launch and uninstall smoke (ephemeral CI only)
+        shell: pwsh
+        run: ./desktop/test-installer.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 学习记录-Windows-x64
+          path: release/学习记录-Setup.exe
+          if-no-files-found: error
+          retention-days: 14

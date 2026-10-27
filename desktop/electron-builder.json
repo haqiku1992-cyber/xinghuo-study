@@ -1,0 +1,12 @@
+{
+  "appId": "io.github.haqiku1992.xinghuostudy",
+  "productName": "学习记录",
+  "asar": true,
+  "directories": { "output": "release" },
+  "files": ["desktop/main.mjs", "desktop/protocol.mjs", "desktop/smoke.mjs", "desktop/icon.ico", "desktop-dist/**/*", "package.json", "!node_modules/**/*"],
+  "extraMetadata": { "main": "desktop/main.mjs" },
+  "npmRebuild": false,
+  "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "desktop/icon.ico", "signExecutable": false },
+  "nsis": { "oneClick": false, "perMachine": false, "allowElevation": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "deleteAppDataOnUninstall": false, "runAfterFinish": false, "artifactName": "学习记录-Setup.exe" },
+  "publish": null
+}
