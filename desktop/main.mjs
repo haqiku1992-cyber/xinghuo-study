@@ -37,7 +37,15 @@ else {
       const allowed = (isAppURL(details.url) && !new URL(details.url).pathname.startsWith("/api/") && !new URL(details.url).pathname.endsWith("/sw.js")) || details.url.startsWith("blob:app://study/");
       callback({ cancel: !allowed });
     });
-    protocol.handle("app", (request) => serveApp(request, directory));
+    let resourceErrorShown = false;
+    protocol.handle("app", async (request) => {
+      const response = await serveApp(request, directory);
+      if (!smoke && response.status >= 400 && !resourceErrorShown) {
+        resourceErrorShown = true;
+        dialog.showErrorBox("本地资源载入失败", `无法读取 ${new URL(request.url).pathname}。请重新启动或安装应用；学习数据不会被清除。`);
+      }
+      return response;
+    });
     window = new BrowserWindow({
       title: "学习记录", width: 920, height: 860, minWidth: 400, minHeight: 600,
       show: !smoke, backgroundColor: "#f8f8f6", icon: fileURLToPath(new URL("./icon.ico", import.meta.url)),
