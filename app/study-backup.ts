@@ -27,7 +27,7 @@ export function parseStudyBackup(text: string) {
         (value.keep !== undefined && typeof value.keep !== "boolean")) throw new Error("错题格式不正确");
   }
   for (const value of data.history) {
-    if (!numericRecord(value, ["at", "durationMs", "count", "correct"], ["skipped"]) ||
+    if (!numericRecord(value, ["at", "count", "correct"], ["skipped", "durationMs"]) ||
         typeof value.id !== "string" || !types.includes(String(value.type)) ||
         !numericRecord(value.ratings, ["mastered", "fuzzy", "unknown"])) throw new Error("历史记录格式不正确");
   }

@@ -94,7 +94,19 @@ export async function runSmoke(window, directory, requests, userData) {
     await restore(JSON.stringify({ ...expected, theme: "light" }), false); assert.deepEqual(await store(), expected);
     await restore(JSON.stringify({ ...expected, theme: "light" }), true); assert.equal((await store()).theme, "light");
     await restore(exported, true); assert.deepEqual(await store(), expected);
-    await writeFile(path.join(directory, "expected.json"), JSON.stringify(expected));
+    const legacy = { ...expected.history[0], id: "legacy-pwa-round" };
+    delete legacy.durationMs;
+    const mixed = { ...expected, history: [legacy, ...expected.history] };
+    for (const durationMs of [-1, "invalid", null]) {
+      await restore(JSON.stringify({ ...mixed, history: [legacy, { ...expected.history[0], durationMs }] }), true);
+      assert.deepEqual(await store(), expected, "invalid duration must not overwrite existing records");
+    }
+    const nonFinite = JSON.stringify(mixed).replace(/"durationMs":\d+/, '"durationMs":1e400');
+    await restore(nonFinite, true); assert.deepEqual(await store(), expected);
+    await restore(JSON.stringify(mixed), false); assert.deepEqual(await store(), expected);
+    await restore(JSON.stringify(mixed), true); assert.deepEqual(await store(), mixed);
+    assert.equal(Object.hasOwn((await store()).history[0], "durationMs"), false);
+    await writeFile(path.join(directory, "expected.json"), JSON.stringify(mixed));
   } else {
     const expected = JSON.parse(await readFile(path.join(directory, "expected.json"), "utf8"));
     assert.deepEqual(await store(), expected, "record survives a full process restart");

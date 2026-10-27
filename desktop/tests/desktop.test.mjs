@@ -23,6 +23,30 @@ test("backup validates all state before restoring, preserves legacy data and rem
   assert.deepEqual(parseStudyBackup(JSON.stringify(retired)), { ...known, session: null, progress: {}, wrong: {} });
 });
 
+test("PWA JSON restores mixed legacy/current history without inventing durations", () => {
+  const legacy = { id: "old-round", type: "single", at: 10, count: 2, correct: 1, ratings: { mastered: 0, fuzzy: 0, unknown: 0 } };
+  const backup = {
+    session: null, theme: "dark",
+    progress: { q1: { attempts: 2, correctStreak: 0, lastAttempt: 12, correctAttempts: 1 } },
+    wrong: { q1: { count: 1, lastWrong: 12, streak: 0 } },
+    history: [legacy, { ...legacy, id: "new-round", at: 12, durationMs: 1234 }, { ...legacy, id: "zero-duration", durationMs: 0 }],
+  };
+  const restored = parseStudyBackup(JSON.stringify(backup));
+  assert.deepEqual(restored, backup);
+  assert.equal(Object.hasOwn(restored.history[0], "durationMs"), false);
+  assert.deepEqual(parseStudyBackup(JSON.stringify(restored)), backup);
+  // Model the import's parse-before-assignment boundary; failure keeps the old store.
+  let stored = structuredClone(backup);
+  for (const durationMs of [-1, "123", null, Infinity, -Infinity, NaN]) {
+    const bad = { ...backup, history: [legacy, { ...legacy, durationMs }] };
+    assert.throws(() => { stored = parseStudyBackup(JSON.stringify(bad)); });
+    assert.deepEqual(stored, backup);
+  }
+  const nonFinite = JSON.stringify(backup).replace('"durationMs":1234', '"durationMs":1e400');
+  assert.throws(() => { stored = parseStudyBackup(nonFinite); });
+  assert.deepEqual(stored, backup);
+});
+
 test("app protocol rejects traversal, alternate origins, APIs and symlink escapes", async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), "xinghuo-protocol-"));
   try {
